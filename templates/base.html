@@ -12,12 +12,11 @@
       href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css"
       rel="stylesheet"
     />
-    <!-- 
-      FIXED: The old Alpine.js link was broken (returned a 404 error). 
-      This is the correct, modern link to Alpine.js v3, which is required
-      for all the interactive elements on the page to work.
-    -->
-    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.10/dist/cdn.min.js"></script>
+    <!-- The 'defer' attribute is critical. It ensures this script runs after the page is loaded. -->
+    <script
+      src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.10/dist/cdn.min.js"
+      defer
+    ></script>
     {% block extra_css %}{% endblock %}
   </head>
   <body class="bg-gray-100 min-h-screen flex flex-col">
@@ -53,11 +52,10 @@
     </footer>
 
     <script>
-      // Set current year in footer
       document.getElementById("current-year").textContent =
         new Date().getFullYear();
     </script>
-    <script src="{{ url_for('static', path='/js/main.js') }}"></script>
+    <!-- Your page-specific JavaScript will go here -->
     {% block extra_js %}{% endblock %}
   </body>
 </html>

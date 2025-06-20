@@ -1,0 +1,61 @@
+{% extends "base.html" %} {% block title %}Strangers Meet - Connect with people
+you've met{% endblock %} {% block content %}
+<div class="flex flex-col items-center justify-center mt-10">
+  <div class="text-center mb-10">
+    <h1 class="text-4xl font-bold text-indigo-700 mb-4">
+      Welcome to Strangers Meet
+    </h1>
+    <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+      Build lasting connections with people you meet in real life. Our
+      invite-only platform helps you stay connected with new acquaintances.
+    </p>
+  </div>
+
+  <div class="bg-white rounded-lg shadow-lg p-8 max-w-md w-full">
+    <div class="flex flex-col space-y-4">
+      <h2 class="text-2xl font-semibold text-center mb-4">Get Started</h2>
+      <p class="text-gray-600 mb-4">
+        To join Strangers Meet, you need an invitation from someone you've met.
+      </p>
+      <a
+        href="/login"
+        class="bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-4 rounded-md text-center"
+      >
+        Login with Gmail
+      </a>
+      <p class="text-sm text-gray-500 text-center mt-4">
+        Already have an invitation? Login with your Gmail account and enter your
+        invitation code.
+      </p>
+    </div>
+  </div>
+
+  <div class="mt-16 grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl">
+    <div class="bg-white p-6 rounded-lg shadow-md">
+      <div class="text-indigo-600 text-2xl mb-4">👋</div>
+      <h3 class="text-xl font-semibold mb-2">Meet New People</h3>
+      <p class="text-gray-600">
+        Connect with people you meet in real life and continue the conversation
+        online.
+      </p>
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md">
+      <div class="text-indigo-600 text-2xl mb-4">💬</div>
+      <h3 class="text-xl font-semibold mb-2">Join Group Chats</h3>
+      <p class="text-gray-600">
+        Create or join group conversations based on shared interests and
+        hobbies.
+      </p>
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md">
+      <div class="text-indigo-600 text-2xl mb-4">📅</div>
+      <h3 class="text-xl font-semibold mb-2">Organize Meetups</h3>
+      <p class="text-gray-600">
+        Plan future meetups and keep a journal of your gatherings.
+      </p>
+    </div>
+  </div>
+</div>
+{% endblock %}

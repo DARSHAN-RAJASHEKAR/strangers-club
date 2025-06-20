@@ -1,0 +1,168 @@
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c7d2fe;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #818cf8;
+}
+
+/* Message container styling */
+#messages-container {
+  scrollbar-width: thin;
+  scrollbar-color: #c7d2fe #f1f1f1;
+}
+
+/* Avatar styling */
+.avatar-initial {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: #4f46e5;
+  color: white;
+  font-weight: bold;
+  font-size: 16px;
+}
+
+/* Message bubble styling */
+.message-bubble {
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  max-width: 75%;
+  word-wrap: break-word;
+}
+
+.message-mine {
+  background-color: #e0e7ff;
+  margin-left: auto;
+  border-bottom-right-radius: 0;
+}
+
+.message-others {
+  background-color: #f3f4f6;
+  margin-right: auto;
+  border-bottom-left-radius: 0;
+}
+
+/* Animation for new messages */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.new-message {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+/* Date divider in messages */
+.date-divider {
+  display: flex;
+  align-items: center;
+  margin: 1rem 0;
+  color: #6b7280;
+  font-size: 0.75rem;
+}
+
+.date-divider::before,
+.date-divider::after {
+  content: "";
+  flex: 1;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.date-divider::before {
+  margin-right: 0.5rem;
+}
+
+.date-divider::after {
+  margin-left: 0.5rem;
+}
+
+/* Button hover effects */
+.btn-hover-effect {
+  transition: transform 0.2s ease-in-out;
+}
+
+.btn-hover-effect:hover {
+  transform: translateY(-2px);
+}
+
+/* User status indicator */
+.status-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 5px;
+}
+
+.status-online {
+  background-color: #10b981;
+}
+
+.status-offline {
+  background-color: #d1d5db;
+}
+
+/* Typing indicator animation */
+.typing-indicator {
+  display: flex;
+  align-items: center;
+}
+
+.typing-indicator span {
+  height: 8px;
+  width: 8px;
+  margin: 0 1px;
+  background-color: #a5b4fc;
+  border-radius: 50%;
+  display: inline-block;
+  animation: typing 1.4s infinite ease-in-out both;
+}
+
+.typing-indicator span:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-indicator span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing {
+  0%,
+  80%,
+  100% {
+    transform: scale(0);
+  }
+  40% {
+    transform: scale(1);
+  }
+}

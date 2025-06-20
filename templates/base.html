@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}Strangers Meet{% endblock %}</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', path='/css/styles.css') }}"
+    />
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css"
+      rel="stylesheet"
+    />
+    <!-- 
+      FIXED: The old Alpine.js link was broken (returned a 404 error). 
+      This is the correct, modern link to Alpine.js v3, which is required
+      for all the interactive elements on the page to work.
+    -->
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.10/dist/cdn.min.js"></script>
+    {% block extra_css %}{% endblock %}
+  </head>
+  <body class="bg-gray-100 min-h-screen flex flex-col">
+    <header class="bg-indigo-700 text-white">
+      <div
+        class="container mx-auto px-4 py-3 flex justify-between items-center"
+      >
+        <div class="flex items-center space-x-2">
+          <a href="/" class="text-xl font-bold">Strangers Meet</a>
+        </div>
+        <nav>
+          <ul class="flex space-x-4">
+            {% block nav_links %}
+            <li><a href="/" class="hover:text-indigo-200">Home</a></li>
+            <li><a href="/login" class="hover:text-indigo-200">Login</a></li>
+            {% endblock %}
+          </ul>
+        </nav>
+      </div>
+    </header>
+
+    <main class="container mx-auto px-4 py-8 flex-grow">
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="bg-gray-800 text-white py-6">
+      <div class="container mx-auto px-4">
+        <p class="text-center">
+          &copy; <span id="current-year"></span> Strangers Meet. All rights
+          reserved.
+        </p>
+      </div>
+    </footer>
+
+    <script>
+      // Set current year in footer
+      document.getElementById("current-year").textContent =
+        new Date().getFullYear();
+    </script>
+    <script src="{{ url_for('static', path='/js/main.js') }}"></script>
+    {% block extra_js %}{% endblock %}
+  </body>
+</html>

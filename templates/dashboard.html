@@ -1,0 +1,1218 @@
+{% extends "base.html" %} {% block title %}Dashboard - Strangers Meet{% endblock
+%} {% block nav_links %}
+<li><a href="/app" class="hover:text-indigo-200">Dashboard</a></li>
+<li><a href="#" id="logout-btn" class="hover:text-indigo-200">Logout</a></li>
+{% endblock %} {% block content %}
+<div x-data="app()" x-init="init()" class="h-full flex flex-col">
+  <!-- Loading state -->
+  <div
+    x-show="loading"
+    class="fixed inset-0 flex items-center justify-center bg-white bg-opacity-75 z-50"
+  >
+    <div class="text-center">
+      <svg
+        class="animate-spin h-10 w-10 text-indigo-600 mx-auto"
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <circle
+          class="opacity-25"
+          cx="12"
+          cy="12"
+          r="10"
+          stroke="currentColor"
+          stroke-width="4"
+        ></circle>
+        <path
+          class="opacity-75"
+          fill="currentColor"
+          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+        ></path>
+      </svg>
+      <p class="mt-2 text-indigo-600 font-medium">Loading...</p>
+    </div>
+  </div>
+
+  <div x-show="!loading" class="grid grid-cols-12 gap-4 h-[calc(100vh-150px)]">
+    <!-- Sidebar -->
+    <div class="col-span-3 bg-white rounded-lg shadow p-4 overflow-y-auto">
+      <div class="mb-6">
+        <h2 class="text-lg font-semibold text-gray-700 mb-2">Your Groups</h2>
+        <div class="space-y-2">
+          <template x-for="group in groups" :key="group.id">
+            <a
+              href="#"
+              @click.prevent="selectGroup(group)"
+              class="block px-3 py-2 rounded-md hover:bg-indigo-100 transition-colors"
+              :class="{'bg-indigo-100': selectedGroup && selectedGroup.id === group.id}"
+            >
+              <span x-text="group.name" class="font-medium"></span>
+            </a>
+          </template>
+        </div>
+
+        <div class="mt-4">
+          <button
+            @click="showCreateGroupModal = true"
+            class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          >
+            <svg
+              class="h-4 w-4 mr-1"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+              ></path>
+            </svg>
+            New Group
+          </button>
+        </div>
+      </div>
+
+      <div x-show="selectedGroup">
+        <h2 class="text-lg font-semibold text-gray-700 mb-2">Channels</h2>
+        <div class="space-y-2">
+          <template x-for="channel in channels" :key="channel.id">
+            <a
+              href="#"
+              @click.prevent="selectChannel(channel)"
+              class="block px-3 py-2 rounded-md hover:bg-indigo-100 transition-colors"
+              :class="{'bg-indigo-100': selectedChannel && selectedChannel.id === channel.id}"
+            >
+              <span x-text="channel.name" class="font-medium"></span>
+            </a>
+          </template>
+        </div>
+
+        <div class="mt-4" x-show="isGroupOwner">
+          <button
+            @click="showCreateChannelModal = true"
+            class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-indigo-600 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          >
+            <svg
+              class="h-4 w-4 mr-1"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+              ></path>
+            </svg>
+            New Channel
+          </button>
+        </div>
+
+        <div class="mt-6" x-show="isGroupOwner">
+          <h2 class="text-lg font-semibold text-gray-700 mb-2">
+            Invite People
+          </h2>
+          <button
+            @click="generateInviteCode()"
+            class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+          >
+            <svg
+              class="h-4 w-4 mr-1"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+              ></path>
+            </svg>
+            Generate Invite Code
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main content area -->
+    <div class="col-span-9 bg-white rounded-lg shadow">
+      <!-- Welcome screen when no channel is selected -->
+      <div
+        x-show="!selectedChannel"
+        class="h-full flex flex-col items-center justify-center p-6 text-center"
+      >
+        <div class="max-w-md">
+          <h2 class="text-2xl font-bold text-gray-800 mb-2">
+            Welcome to Strangers Meet!
+          </h2>
+          <p class="text-gray-600 mb-6">
+            Select a channel from the sidebar to start chatting, or create a new
+            group to invite people you've met.
+          </p>
+          <div class="border-t border-gray-200 pt-4">
+            <p class="text-sm text-gray-500">
+              Need help? Contact us at support@strangersmeet.com
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Channel content when a channel is selected -->
+      <div x-show="selectedChannel" class="h-full flex flex-col">
+        <!-- Channel header -->
+        <div class="border-b border-gray-200 p-4">
+          <div class="flex justify-between items-center">
+            <div>
+              <h2
+                class="text-lg font-semibold text-gray-800"
+                x-text="selectedChannel ? selectedChannel.name : ''"
+              ></h2>
+              <p
+                class="text-sm text-gray-500"
+                x-text="selectedChannel ? selectedChannel.description : ''"
+              ></p>
+            </div>
+            <div
+              x-show="isGroupOwner && selectedChannel && selectedChannel.name !== 'general'"
+            >
+              <button
+                @click="deleteChannel(selectedChannel.id)"
+                class="text-red-600 hover:text-red-800"
+                title="Delete channel"
+              >
+                <svg
+                  class="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  ></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Messages area -->
+        <div class="flex-1 overflow-y-auto p-4" id="messages-container">
+          <template x-for="(message, index) in messages" :key="message.id">
+            <div class="mb-4">
+              <div class="flex items-start">
+                <div class="flex-shrink-0">
+                  <div
+                    class="h-10 w-10 rounded-full bg-indigo-500 flex items-center justify-center text-white font-bold"
+                  >
+                    <span
+                      x-text="message.author.username.substring(0, 2)"
+                    ></span>
+                  </div>
+                </div>
+                <div class="ml-3">
+                  <div class="flex items-center">
+                    <span
+                      class="text-sm font-medium text-gray-900"
+                      x-text="message.author.username"
+                    ></span>
+                    <span
+                      class="ml-2 text-xs text-gray-500"
+                      x-text="formatDate(message.created_at)"
+                    ></span>
+                    <button
+                      x-show="message.author.id === currentUser.id"
+                      @click="deleteMessage(message.id)"
+                      class="ml-2 text-gray-400 hover:text-red-600"
+                    >
+                      <svg
+                        class="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                        ></path>
+                      </svg>
+                    </button>
+                  </div>
+                  <div
+                    class="mt-1 text-sm text-gray-700"
+                    x-text="message.content"
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <div
+            x-show="messages.length === 0"
+            class="flex flex-col items-center justify-center h-64"
+          >
+            <svg
+              class="h-12 w-12 text-gray-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+              ></path>
+            </svg>
+            <p class="mt-2 text-gray-500">
+              No messages yet. Start the conversation!
+            </p>
+          </div>
+        </div>
+
+        <!-- Message input -->
+        <div class="border-t border-gray-200 p-4">
+          <form @submit.prevent="sendMessage" class="flex">
+            <input
+              type="text"
+              x-model="newMessage"
+              class="flex-1 border border-gray-300 rounded-l-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+              placeholder="Type your message..."
+              required
+            />
+            <button
+              type="submit"
+              class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-r-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+              <svg
+                class="h-5 w-5 mr-1"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                ></path>
+              </svg>
+              Send
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Group Modal -->
+  <div
+    x-show="showCreateGroupModal"
+    class="fixed inset-0 z-10 overflow-y-auto"
+    aria-labelledby="modal-title"
+    role="dialog"
+    aria-modal="true"
+  >
+    <div
+      class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0"
+    >
+      <div
+        x-show="showCreateGroupModal"
+        x-transition:enter="ease-out duration-300"
+        x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100"
+        x-transition:leave="ease-in duration-200"
+        x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0"
+        class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
+        @click="showCreateGroupModal = false"
+      ></div>
+
+      <div
+        class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full"
+      >
+        <form @submit.prevent="createGroup">
+          <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+            <div class="sm:flex sm:items-start">
+              <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                <h3
+                  class="text-lg leading-6 font-medium text-gray-900"
+                  id="modal-title"
+                >
+                  Create New Group
+                </h3>
+                <div class="mt-4 space-y-4">
+                  <div>
+                    <label
+                      for="group_name"
+                      class="block text-sm font-medium text-gray-700"
+                      >Group Name</label
+                    >
+                    <input
+                      type="text"
+                      id="group_name"
+                      x-model="newGroup.name"
+                      class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label
+                      for="group_description"
+                      class="block text-sm font-medium text-gray-700"
+                      >Description</label
+                    >
+                    <textarea
+                      id="group_description"
+                      x-model="newGroup.description"
+                      class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                      rows="3"
+                    ></textarea>
+                  </div>
+                  <div>
+                    <label
+                      for="meetup_date"
+                      class="block text-sm font-medium text-gray-700"
+                      >Meetup Date (optional)</label
+                    >
+                    <input
+                      type="date"
+                      id="meetup_date"
+                      x-model="newGroup.meetup_date"
+                      class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+            <button
+              type="submit"
+              class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:ml-3 sm:w-auto sm:text-sm"
+            >
+              Create
+            </button>
+            <button
+              type="button"
+              class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+              @click="showCreateGroupModal = false"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Channel Modal -->
+  <div
+    x-show="showCreateChannelModal"
+    class="fixed inset-0 z-10 overflow-y-auto"
+    aria-labelledby="modal-title"
+    role="dialog"
+    aria-modal="true"
+  >
+    <div
+      class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0"
+    >
+      <div
+        x-show="showCreateChannelModal"
+        x-transition:enter="ease-out duration-300"
+        x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100"
+        x-transition:leave="ease-in duration-200"
+        x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0"
+        class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
+        @click="showCreateChannelModal = false"
+      ></div>
+
+      <div
+        class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full"
+      >
+        <form @submit.prevent="createChannel">
+          <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+            <div class="sm:flex sm:items-start">
+              <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                <h3
+                  class="text-lg leading-6 font-medium text-gray-900"
+                  id="modal-title"
+                >
+                  Create New Channel
+                </h3>
+                <div class="mt-4 space-y-4">
+                  <div>
+                    <label
+                      for="channel_name"
+                      class="block text-sm font-medium text-gray-700"
+                      >Channel Name</label
+                    >
+                    <input
+                      type="text"
+                      id="channel_name"
+                      x-model="newChannel.name"
+                      class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label
+                      for="channel_description"
+                      class="block text-sm font-medium text-gray-700"
+                      >Description</label
+                    >
+                    <textarea
+                      id="channel_description"
+                      x-model="newChannel.description"
+                      class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                      rows="3"
+                    ></textarea>
+                  </div>
+                  <div>
+                    <label
+                      for="channel_type"
+                      class="block text-sm font-medium text-gray-700"
+                      >Type</label
+                    >
+                    <select
+                      id="channel_type"
+                      x-model="newChannel.type"
+                      class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                    >
+                      <option value="general">General</option>
+                      <option value="hobby">Hobby</option>
+                      <option value="interest">Interest</option>
+                      <option value="meetup">Meetup</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+            <button
+              type="submit"
+              class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:ml-3 sm:w-auto sm:text-sm"
+            >
+              Create
+            </button>
+            <button
+              type="button"
+              class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+              @click="showCreateChannelModal = false"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Invitation Code Modal -->
+  <div
+    x-show="showInviteCodeModal"
+    class="fixed inset-0 z-10 overflow-y-auto"
+    aria-labelledby="modal-title"
+    role="dialog"
+    aria-modal="true"
+  >
+    <div
+      class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0"
+    >
+      <div
+        x-show="showInviteCodeModal"
+        x-transition:enter="ease-out duration-300"
+        x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100"
+        x-transition:leave="ease-in duration-200"
+        x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0"
+        class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
+        @click="showInviteCodeModal = false"
+      ></div>
+
+      <div
+        class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full"
+      >
+        <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+          <div class="sm:flex sm:items-start">
+            <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+              <h3
+                class="text-lg leading-6 font-medium text-gray-900"
+                id="modal-title"
+              >
+                Invitation Code
+              </h3>
+              <div class="mt-4">
+                <p class="text-sm text-gray-500 mb-4">
+                  Share this code with people you want to invite to join this
+                  group. This code can only be used once.
+                </p>
+                <div class="bg-gray-100 p-4 rounded-md text-center">
+                  <p
+                    class="text-xl font-mono font-bold text-indigo-700"
+                    x-text="inviteCode"
+                  ></p>
+                </div>
+                <div class="mt-4 flex justify-center">
+                  <button
+                    @click="copyInviteCode()"
+                    class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  >
+                    <svg
+                      class="h-5 w-5 mr-1"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
+                      ></path>
+                    </svg>
+                    Copy to Clipboard
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+          <button
+            type="button"
+            class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+            @click="showInviteCodeModal = false"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %} {% block extra_js %}
+<script>
+  function app() {
+    return {
+      token: "{{ token }}" || localStorage.getItem("token"),
+      currentUser: null,
+      groups: [],
+      channels: [],
+      messages: [],
+      selectedGroup: null,
+      selectedChannel: null,
+      newMessage: "",
+      loading: true,
+      socket: null,
+      showCreateGroupModal: false,
+      showCreateChannelModal: false,
+      showInviteCodeModal: false,
+      inviteCode: "",
+      isGroupOwner: false,
+      newGroup: {
+        name: "",
+        description: "",
+        meetup_date: null,
+        is_general: false,
+      },
+      newChannel: {
+        name: "",
+        description: "",
+        type: "general",
+      },
+      async init() {
+        console.log("🚀 Dashboard initialization started");
+        console.log("📋 Token status:", this.token ? "Present" : "Missing");
+        console.log(
+          "📋 Token preview:",
+          this.token ? this.token.substring(0, 50) + "..." : "N/A"
+        );
+
+        if (!this.token) {
+          console.log("❌ No token found, redirecting to login");
+          window.location.href = "/login";
+          return;
+        }
+
+        // Store token in localStorage
+        localStorage.setItem("token", this.token);
+        console.log("💾 Token stored in localStorage");
+
+        try {
+          console.log("👤 Fetching current user...");
+          await this.fetchCurrentUser();
+          console.log(
+            "✅ Current user fetched successfully:",
+            this.currentUser
+          );
+
+          console.log("👥 Fetching groups...");
+          await this.fetchGroups();
+          console.log("✅ Groups fetched successfully:", this.groups);
+
+          // Set up logout button
+          const logoutBtn = document.getElementById("logout-btn");
+          if (logoutBtn) {
+            logoutBtn.addEventListener("click", (e) => {
+              e.preventDefault();
+              this.logout();
+            });
+            console.log("🚪 Logout button setup complete");
+          } else {
+            console.warn("⚠️ Logout button not found");
+          }
+
+          console.log("🎉 Dashboard initialization completed successfully");
+        } catch (error) {
+          console.error("💥 Initialization error:", error);
+          console.error("📊 Error details:", {
+            status: error.status,
+            message: error.message,
+            response: error.response,
+            stack: error.stack,
+          });
+
+          if (error.status === 401) {
+            console.log("🔐 Authentication failed, logging out");
+            this.logout();
+          } else {
+            // Show error to user
+            alert(
+              `Dashboard failed to load: ${
+                error.message || "Unknown error"
+              }\n\nCheck console for details.`
+            );
+          }
+        } finally {
+          console.log("⏰ Setting loading to false");
+          this.loading = false;
+        }
+      },
+
+      async fetchCurrentUser() {
+        console.log("🔍 Making request to /api/v1/auth/me");
+        console.log(
+          "📡 Request URL:",
+          window.location.origin + "/api/v1/auth/me"
+        );
+
+        try {
+          const response = await fetch("/api/v1/auth/me", {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${this.token}`,
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+          });
+
+          console.log("📡 Response status:", response.status);
+          console.log("📡 Response statusText:", response.statusText);
+          console.log("📡 Response URL:", response.url);
+          console.log(
+            "📡 Response headers:",
+            Object.fromEntries(response.headers.entries())
+          );
+
+          if (!response.ok) {
+            let errorText;
+            try {
+              errorText = await response.text();
+              console.error("❌ Response body:", errorText);
+            } catch (e) {
+              errorText = "Could not read response body";
+            }
+
+            throw {
+              status: response.status,
+              statusText: response.statusText,
+              message: `Failed to fetch user data: ${response.status} ${response.statusText}`,
+              response: errorText,
+              url: response.url,
+            };
+          }
+
+          const userData = await response.json();
+          this.currentUser = userData;
+          console.log("✅ User data received:", userData);
+        } catch (error) {
+          if (error.name === "TypeError" && error.message.includes("fetch")) {
+            console.error("💥 Network error - could not reach server:", error);
+            throw {
+              status: 0,
+              message:
+                "Network error - could not reach the server. Check if the server is running.",
+              response: error.message,
+            };
+          }
+          console.error("💥 Error in fetchCurrentUser:", error);
+          throw error;
+        }
+      },
+
+      async fetchGroups() {
+        console.log("🔍 Making request to /api/v1/groups");
+        console.log(
+          "📡 Request URL:",
+          window.location.origin + "/api/v1/groups"
+        );
+
+        try {
+          const response = await fetch("/api/v1/groups", {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${this.token}`,
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+          });
+
+          console.log("📡 Groups response status:", response.status);
+          console.log("📡 Groups response statusText:", response.statusText);
+
+          if (!response.ok) {
+            let errorText;
+            try {
+              errorText = await response.text();
+              console.error("❌ Groups response body:", errorText);
+            } catch (e) {
+              errorText = "Could not read response body";
+            }
+
+            if (response.status === 404) {
+              console.warn("⚠️ Groups endpoint not found, using empty array");
+              this.groups = [];
+              return;
+            }
+
+            throw {
+              status: response.status,
+              statusText: response.statusText,
+              message: `Failed to fetch groups: ${response.status} ${response.statusText}`,
+              response: errorText,
+              url: response.url,
+            };
+          }
+
+          const groupsData = await response.json();
+          this.groups = groupsData;
+          console.log("✅ Groups data received:", groupsData);
+        } catch (error) {
+          if (error.name === "TypeError" && error.message.includes("fetch")) {
+            console.error("💥 Network error fetching groups:", error);
+            this.groups = [];
+            return;
+          }
+          console.error("💥 Error in fetchGroups:", error);
+          // Don't throw for groups - just use empty array
+          this.groups = [];
+          console.log("🔄 Using empty groups array as fallback");
+        }
+      },
+
+      async selectGroup(group) {
+        this.selectedGroup = group;
+        this.selectedChannel = null;
+        this.messages = [];
+        this.isGroupOwner = group.owner_id === this.currentUser.id;
+
+        await this.fetchChannels(group.id);
+      },
+
+      async fetchChannels(groupId) {
+        const response = await fetch(`/api/v1/groups/${groupId}/channels`, {
+          headers: {
+            Authorization: `Bearer ${this.token}`,
+          },
+        });
+
+        if (!response.ok) {
+          console.error("Failed to fetch channels:", response.statusText);
+          return;
+        }
+
+        this.channels = await response.json();
+      },
+
+      async selectChannel(channel) {
+        // Close previous WebSocket connection if exists
+        if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+          this.socket.close();
+        }
+
+        this.selectedChannel = channel;
+
+        // Fetch messages for the selected channel
+        await this.fetchMessages(channel.id);
+
+        // Set up WebSocket connection for real-time messaging
+        this.setupWebSocket(channel.id);
+
+        // Scroll to the bottom of the messages container
+        this.$nextTick(() => {
+          const container = document.getElementById("messages-container");
+          if (container) {
+            container.scrollTop = container.scrollHeight;
+          }
+        });
+      },
+
+      async fetchMessages(channelId) {
+        const response = await fetch(`/api/v1/messages/channel/${channelId}`, {
+          headers: {
+            Authorization: `Bearer ${this.token}`,
+          },
+        });
+
+        if (!response.ok) {
+          console.error("Failed to fetch messages:", response.statusText);
+          return;
+        }
+
+        this.messages = await response.json();
+      },
+
+      setupWebSocket(channelId) {
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const host = window.location.host;
+
+        this.socket = new WebSocket(
+          `${protocol}//${host}/api/v1/messages/ws/${channelId}?token=${this.token}`
+        );
+
+        this.socket.onopen = () => {
+          console.log("WebSocket connection established");
+        };
+
+        this.socket.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+
+          // Handle different message types
+          if (data.type === "new_message") {
+            this.messages.push(data);
+
+            // Scroll to the bottom of the messages container
+            this.$nextTick(() => {
+              const container = document.getElementById("messages-container");
+              if (container) {
+                container.scrollTop = container.scrollHeight;
+              }
+            });
+          } else if (data.type === "message_update") {
+            const index = this.messages.findIndex((m) => m.id === data.id);
+            if (index !== -1) {
+              this.messages[index].content = data.content;
+              this.messages[index].updated_at = data.updated_at;
+            }
+          } else if (data.type === "message_delete") {
+            this.messages = this.messages.filter((m) => m.id !== data.id);
+          }
+        };
+
+        this.socket.onclose = () => {
+          console.log("WebSocket connection closed");
+        };
+
+        this.socket.onerror = (error) => {
+          console.error("WebSocket error:", error);
+        };
+      },
+
+      async sendMessage() {
+        if (!this.newMessage.trim() || !this.selectedChannel) {
+          return;
+        }
+
+        try {
+          const response = await fetch(
+            `/api/v1/messages/channel/${this.selectedChannel.id}`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${this.token}`,
+              },
+              body: JSON.stringify({
+                content: this.newMessage,
+                channel_id: this.selectedChannel.id,
+              }),
+            }
+          );
+
+          if (!response.ok) {
+            throw new Error("Failed to send message");
+          }
+
+          // Clear the input field
+          this.newMessage = "";
+
+          // No need to update messages, the WebSocket will handle that
+        } catch (error) {
+          console.error("Error sending message:", error);
+          alert("Failed to send message. Please try again.");
+        }
+      },
+
+      async deleteMessage(messageId) {
+        if (!confirm("Are you sure you want to delete this message?")) {
+          return;
+        }
+
+        try {
+          const response = await fetch(`/api/v1/messages/${messageId}`, {
+            method: "DELETE",
+            headers: {
+              Authorization: `Bearer ${this.token}`,
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error("Failed to delete message");
+          }
+
+          // No need to update messages, the WebSocket will handle that
+        } catch (error) {
+          console.error("Error deleting message:", error);
+          alert("Failed to delete message. Please try again.");
+        }
+      },
+
+      async createGroup() {
+        try {
+          const response = await fetch("/api/v1/groups", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${this.token}`,
+            },
+            body: JSON.stringify(this.newGroup),
+          });
+
+          if (!response.ok) {
+            throw new Error("Failed to create group");
+          }
+
+          const newGroup = await response.json();
+
+          // Add the new group to the groups list
+          this.groups.push(newGroup);
+
+          // Select the new group
+          this.selectGroup(newGroup);
+
+          // Reset the form and close the modal
+          this.newGroup = {
+            name: "",
+            description: "",
+            meetup_date: null,
+            is_general: false,
+          };
+          this.showCreateGroupModal = false;
+        } catch (error) {
+          console.error("Error creating group:", error);
+          alert("Failed to create group. Please try again.");
+        }
+      },
+
+      async createChannel() {
+        if (!this.selectedGroup) {
+          return;
+        }
+
+        const channelData = {
+          ...this.newChannel,
+          group_id: this.selectedGroup.id,
+        };
+
+        try {
+          const response = await fetch(
+            `/api/v1/groups/${this.selectedGroup.id}/channels`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${this.token}`,
+              },
+              body: JSON.stringify(channelData),
+            }
+          );
+
+          if (!response.ok) {
+            throw new Error("Failed to create channel");
+          }
+
+          const newChannel = await response.json();
+
+          // Add the new channel to the channels list
+          this.channels.push(newChannel);
+
+          // Select the new channel
+          this.selectChannel(newChannel);
+
+          // Reset the form and close the modal
+          this.newChannel = {
+            name: "",
+            description: "",
+            type: "general",
+          };
+          this.showCreateChannelModal = false;
+        } catch (error) {
+          console.error("Error creating channel:", error);
+          alert("Failed to create channel. Please try again.");
+        }
+      },
+
+      async deleteChannel(channelId) {
+        if (
+          !confirm(
+            "Are you sure you want to delete this channel? All messages will be permanently deleted."
+          )
+        ) {
+          return;
+        }
+
+        try {
+          const response = await fetch(`/api/v1/channels/${channelId}`, {
+            method: "DELETE",
+            headers: {
+              Authorization: `Bearer ${this.token}`,
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error("Failed to delete channel");
+          }
+
+          // Remove the channel from the channels list
+          this.channels = this.channels.filter((c) => c.id !== channelId);
+
+          // Deselect the channel if it's the current one
+          if (this.selectedChannel && this.selectedChannel.id === channelId) {
+            this.selectedChannel = null;
+            this.messages = [];
+
+            // Close WebSocket connection
+            if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+              this.socket.close();
+            }
+          }
+        } catch (error) {
+          console.error("Error deleting channel:", error);
+          alert("Failed to delete channel. Please try again.");
+        }
+      },
+
+      async generateInviteCode() {
+        if (!this.selectedGroup) {
+          return;
+        }
+
+        try {
+          const response = await fetch(
+            `/api/v1/invitations/generate-new-code/${this.selectedGroup.id}`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${this.token}`,
+              },
+            }
+          );
+
+          if (!response.ok) {
+            throw new Error("Failed to generate invitation code");
+          }
+
+          const invitation = await response.json();
+          this.inviteCode = invitation.code;
+          this.showInviteCodeModal = true;
+        } catch (error) {
+          console.error("Error generating invitation code:", error);
+          alert("Failed to generate invitation code. Please try again.");
+        }
+      },
+
+      copyInviteCode() {
+        navigator.clipboard
+          .writeText(this.inviteCode)
+          .then(() => {
+            alert("Invitation code copied to clipboard!");
+          })
+          .catch((err) => {
+            console.error("Failed to copy text: ", err);
+            // Fallback
+            const textArea = document.createElement("textarea");
+            textArea.value = this.inviteCode;
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand("copy");
+            document.body.removeChild(textArea);
+            alert("Invitation code copied to clipboard!");
+          });
+      },
+
+      formatDate(dateString) {
+        const date = new Date(dateString);
+
+        const now = new Date();
+        const isToday =
+          date.getDate() === now.getDate() &&
+          date.getMonth() === now.getMonth() &&
+          date.getFullYear() === now.getFullYear();
+
+        if (isToday) {
+          return date.toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+        } else {
+          return (
+            date.toLocaleDateString([], {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+            }) +
+            " " +
+            date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+          );
+        }
+      },
+
+      logout() {
+        // Remove token from localStorage
+        localStorage.removeItem("token");
+
+        // Close WebSocket connection if exists
+        if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+          this.socket.close();
+        }
+
+        // Redirect to login page
+        window.location.href = "/login";
+      },
+    };
+  }
+</script>
+{% endblock %}

@@ -32,7 +32,7 @@ class UserInDBBase(UserBase):
 
 # Properties to return via API
 class User(UserInDBBase):
-    pass
+    is_superuser: bool = False
 
 # Additional properties stored in DB
 class UserInDB(UserInDBBase):

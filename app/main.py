@@ -82,35 +82,6 @@ async def init_db():
             await session.commit()
             await session.refresh(admin)
         
-        # --- GENERAL GROUP CREATION ---
-        # Now that we have a guaranteed admin, check for the general group.
-        result = await session.execute(
-            select(Group).where(Group.is_general == True)
-        )
-        general_group = result.scalars().first()
-        
-        if not general_group:
-            # Create general group, owned by the admin user
-            general_group = Group(
-                name="General",
-                description="General group for all users",
-                is_general=True,
-                owner_id=admin.id
-            )
-            general_group.members.append(admin)
-            session.add(general_group)
-            await session.flush() # Use flush to get the group ID before commit
-            
-            # Create general channel
-            general_channel = Channel(
-                name="general",
-                description="General discussion channel",
-                type=ChannelType.GENERAL,
-                group_id=general_group.id
-            )
-            session.add(general_channel)
-            
-            await session.commit()
 
 # Root route
 @app.get("/", response_class=HTMLResponse)

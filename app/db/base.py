@@ -4,12 +4,22 @@ from typing import AsyncGenerator
 
 from app.config import settings
 
-# Create async engine for SQLAlchemy
-engine = create_async_engine(
-    settings.DATABASE_URL,
-    echo=settings.DEBUG,
-    future=True
-)
+# Create async engine for SQLAlchemy with production settings
+engine_kwargs = {
+    "echo": settings.DEBUG,
+    "future": True
+}
+
+# Add connection pooling for PostgreSQL in production
+if settings.DATABASE_URL.startswith("postgresql"):
+    engine_kwargs.update({
+        "pool_size": 10,
+        "max_overflow": 20,
+        "pool_pre_ping": True,
+        "pool_recycle": 300
+    })
+
+engine = create_async_engine(settings.DATABASE_URL, **engine_kwargs)
 
 # Create async session factory
 async_session_factory = sessionmaker(

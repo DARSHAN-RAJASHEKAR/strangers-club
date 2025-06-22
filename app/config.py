@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Strangers Meet"
     API_V1_STR: str = "/api/v1"
     
-    # Base URL for frontend
+    # Base URL for frontend - Use environment variable or default
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:8000")
     
     # Security
@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
     GOOGLE_REDIRECT_URI: str = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/v1/auth/google/callback")
     
-    # Database
+    # Database - Support both SQLite and PostgreSQL
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./strangers_meet.db")
     
     # Invitation code settings
@@ -32,8 +32,13 @@ class Settings(BaseSettings):
     # Debug mode
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
     
-    # CORS settings
-    CORS_ORIGINS: List[str] = ["http://localhost:8000", "http://localhost:3000", "https://timeleft.club"]
+    # CORS settings - Include production URLs
+    CORS_ORIGINS: List[str] = [
+        "http://localhost:8000", 
+        "http://localhost:3000", 
+        "https://timeleft.club",
+        "https://www.timeleft.club"
+    ]
     
     @validator("CORS_ORIGINS", pre=True)
     def parse_cors_origins(cls, v: Any) -> List[str]:
@@ -46,8 +51,9 @@ class Settings(BaseSettings):
     
     @validator("DATABASE_URL")
     def validate_database_url(cls, v: str) -> str:
-        if v.startswith("sqlite"):
-            return v
+        # Convert postgres:// to postgresql:// for SQLAlchemy compatibility
+        if v.startswith("postgres://"):
+            v = v.replace("postgres://", "postgresql://", 1)
         return v
     
     class Config:

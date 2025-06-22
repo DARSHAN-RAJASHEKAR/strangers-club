@@ -130,11 +130,16 @@ async def login_page(request: Request):
         "error": error
     })
 
-# Invitation page
+# Invitation page (for platform registration)
 @app.get("/invite", response_class=HTMLResponse)
 async def invite_page(request: Request):
     token = request.query_params.get("token", "")
     return templates.TemplateResponse("invite.html", {"request": request, "token": token})
+
+# Join group page (for joining groups with invitation codes)
+@app.get("/join-group", response_class=HTMLResponse)
+async def join_group_page(request: Request):
+    return templates.TemplateResponse("join-group.html", {"request": request})
 
 # App page (requires authentication)
 @app.get("/app", response_class=HTMLResponse)

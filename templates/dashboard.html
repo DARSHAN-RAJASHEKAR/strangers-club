@@ -4,16 +4,13 @@
 <li><a href="#" id="logout-btn" class="hover:text-indigo-200">Logout</a></li>
 {% endblock %} {% block content %}
 
-<!-- 
-  FIXED: The entire <script> block has been moved here, before the HTML that uses it.
-  This ensures the app() function is defined before Alpine.js tries to call it.
--->
 <script>
   function app() {
     return {
       token: "{{ token }}" || localStorage.getItem("token"),
       currentUser: null,
-      groups: [],
+      timeleftGroups: [],
+      generalGroups: [],
       channels: [],
       messages: [],
       selectedGroup: null,
@@ -23,9 +20,13 @@
       socket: null,
       showCreateGroupModal: false,
       showCreateChannelModal: false,
-      showInviteCodeModal: false,
-      inviteCode: "",
+      showGroupInviteModal: false,
+      showPlatformInviteModal: false,
+      groupInviteCode: "",
+      platformInviteCode: "",
       isGroupOwner: false,
+      timeleftSectionExpanded: true,
+      generalSectionExpanded: true,
       newGroup: {
         name: "",
         description: "",
@@ -44,16 +45,12 @@
           return;
         }
 
-        // Store token in localStorage
         localStorage.setItem("token", this.token);
 
         try {
-          // Fetch current user info
           await this.fetchCurrentUser();
-          // Fetch user's groups
           await this.fetchGroups();
 
-          // Set up logout button
           document
             .getElementById("logout-btn")
             .addEventListener("click", (e) => {
@@ -88,7 +85,11 @@
         });
         if (!response.ok)
           throw { status: response.status, message: "Failed to fetch groups" };
-        this.groups = await response.json();
+        const allGroups = await response.json();
+
+        // Separate groups into Timeleft Meet-Up Groups and General Groups
+        this.timeleftGroups = allGroups.filter((g) => !g.is_general);
+        this.generalGroups = allGroups.filter((g) => g.is_general);
       },
 
       async selectGroup(group) {
@@ -96,31 +97,20 @@
         this.selectedChannel = null;
         this.messages = [];
         this.isGroupOwner = group.owner_id === this.currentUser.id;
-        await this.fetchChannels(group.id);
-      },
 
-      async fetchChannels(groupId) {
-        const response = await fetch(`/api/v1/groups/${groupId}/channels`, {
+        // Get the default channel for this group
+        const response = await fetch(`/api/v1/groups/${group.id}/channels`, {
           headers: { Authorization: `Bearer ${this.token}` },
         });
-        if (!response.ok) {
-          console.error("Failed to fetch channels:", response.statusText);
-          return;
+        if (response.ok) {
+          const channels = await response.json();
+          if (channels.length > 0) {
+            // Use the first (general) channel but don't show it in UI
+            this.selectedChannel = channels[0];
+            await this.fetchMessages(this.selectedChannel.id);
+            this.setupWebSocket(this.selectedChannel.id);
+          }
         }
-        this.channels = await response.json();
-      },
-
-      async selectChannel(channel) {
-        if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-          this.socket.close();
-        }
-        this.selectedChannel = channel;
-        await this.fetchMessages(channel.id);
-        this.setupWebSocket(channel.id);
-        this.$nextTick(() => {
-          const container = document.getElementById("messages-container");
-          if (container) container.scrollTop = container.scrollHeight;
-        });
       },
 
       async fetchMessages(channelId) {
@@ -132,6 +122,10 @@
           return;
         }
         this.messages = await response.json();
+        this.$nextTick(() => {
+          const container = document.getElementById("messages-container");
+          if (container) container.scrollTop = container.scrollHeight;
+        });
       },
 
       setupWebSocket(channelId) {
@@ -140,29 +134,29 @@
         this.socket = new WebSocket(
           `${protocol}//${host}/api/v1/messages/ws/${channelId}?token=${this.token}`
         );
+
         this.socket.onopen = () => {
           console.log(
             "WebSocket connection established for channel:",
             channelId
           );
         };
+
         this.socket.onmessage = (event) => {
-          console.log("WebSocket message received:", event.data);
           const data = JSON.parse(event.data);
           if (data.type === "new_message") {
-            // Add the message to the list
             this.messages.push(data);
             this.$nextTick(() => {
               const container = document.getElementById("messages-container");
               if (container) container.scrollTop = container.scrollHeight;
             });
-          } else if (data.type === "connection_established") {
-            console.log("WebSocket connection confirmed");
           }
         };
+
         this.socket.onclose = (event) => {
           console.log("WebSocket connection closed:", event.code, event.reason);
         };
+
         this.socket.onerror = (error) => {
           console.error("WebSocket error:", error);
         };
@@ -170,6 +164,7 @@
 
       async sendMessage() {
         if (!this.newMessage.trim() || !this.selectedChannel) return;
+
         try {
           const response = await fetch(
             `/api/v1/messages/channel/${this.selectedChannel.id}`,
@@ -185,20 +180,15 @@
               }),
             }
           );
+
           if (!response.ok) {
             const errorData = await response.json();
-            console.error("Server error:", errorData);
             throw new Error(errorData.detail || "Failed to send message");
           }
 
-          // Get the created message from the response
           const message = await response.json();
-          console.log("Message sent successfully:", message);
 
-          // If WebSocket isn't working, manually add the message
           if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
-            console.log("WebSocket not connected, adding message manually");
-            // Format the message to match expected structure
             const formattedMessage = {
               id: message.id,
               content: message.content,
@@ -239,10 +229,19 @@
           }
 
           const group = await response.json();
-          this.groups.push(group);
+
+          // Add to appropriate list based on group type
+          if (group.is_general) {
+            this.generalGroups.push(group);
+          } else {
+            this.timeleftGroups.push(group);
+          }
+
           this.showCreateGroupModal = false;
           this.resetNewGroup();
-          alert("Group created successfully!");
+
+          // Auto-select the newly created group
+          await this.selectGroup(group);
         } catch (error) {
           console.error("Error creating group:", error);
           alert("Failed to create group. Please try again.");
@@ -273,19 +272,16 @@
           this.channels.push(channel);
           this.showCreateChannelModal = false;
           this.resetNewChannel();
-          alert("Channel created successfully!");
         } catch (error) {
           console.error("Error creating channel:", error);
           alert("Failed to create channel. Please try again.");
         }
       },
 
-      async generateInviteCode() {
-        if (!this.selectedGroup) return;
-
+      async generateGroupInviteCode(groupId) {
         try {
           const response = await fetch(
-            `/api/v1/invitations/generate-new-code/${this.selectedGroup.id}`,
+            `/api/v1/invitations/generate-new-code/${groupId}`,
             {
               method: "POST",
               headers: {
@@ -300,23 +296,59 @@
           }
 
           const invitation = await response.json();
-          this.inviteCode = invitation.code;
-          this.showInviteCodeModal = true;
+          this.groupInviteCode = invitation.code;
+          this.showGroupInviteModal = true;
         } catch (error) {
           console.error("Error generating invite code:", error);
           alert("Failed to generate invite code. Please try again.");
         }
       },
 
-      copyInviteCode() {
+      async generatePlatformInviteCode() {
+        try {
+          // For now, we'll use a dummy general group ID
+          // In production, this should be a dedicated endpoint for platform invites
+          const response = await fetch("/api/v1/invitations", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${this.token}`,
+            },
+            body: JSON.stringify({
+              group_id: this.generalGroups[0]?.id || this.timeleftGroups[0]?.id,
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error("Failed to generate platform invite code");
+          }
+
+          const invitation = await response.json();
+          this.platformInviteCode = invitation.code;
+          this.showPlatformInviteModal = true;
+        } catch (error) {
+          console.error("Error generating platform invite code:", error);
+          alert("Failed to generate platform invite code. Please try again.");
+        }
+      },
+
+      copyToClipboard(text) {
         navigator.clipboard
-          .writeText(this.inviteCode)
+          .writeText(text)
           .then(() => {
             alert("Invite code copied to clipboard!");
           })
           .catch(() => {
             alert("Failed to copy invite code");
           });
+      },
+
+      toggleSection(section) {
+        if (section === "timeleft") {
+          this.timeleftSectionExpanded = !this.timeleftSectionExpanded;
+        } else if (section === "general") {
+          this.generalSectionExpanded = !this.generalSectionExpanded;
+        }
       },
 
       resetNewGroup() {
@@ -338,8 +370,9 @@
 
       logout() {
         localStorage.removeItem("token");
-        if (this.socket && this.socket.readyState === WebSocket.OPEN)
+        if (this.socket && this.socket.readyState === WebSocket.OPEN) {
           this.socket.close();
+        }
         window.location.href = "/login";
       },
     };
@@ -377,36 +410,98 @@
     </div>
   </div>
 
-  <!-- Main UI: shown only when not loading -->
+  <!-- Main UI -->
   <div
     x-show="!loading"
     class="grid grid-cols-12 gap-4 h-[calc(100vh-150px)]"
     style="display: none"
   >
     <!-- Sidebar -->
-    <div class="col-span-3 bg-white rounded-lg shadow p-4 overflow-y-auto">
-      <div class="mb-6">
-        <h2 class="text-lg font-semibold text-gray-700 mb-2">Your Groups</h2>
-        <div class="space-y-2">
-          <template x-for="group in groups" :key="group.id">
-            <a
-              href="#"
-              @click.prevent="selectGroup(group)"
-              class="block px-3 py-2 rounded-md hover:bg-indigo-100 transition-colors"
-              :class="{'bg-indigo-100': selectedGroup && selectedGroup.id === group.id}"
-            >
-              <span x-text="group.name" class="font-medium"></span>
-            </a>
-          </template>
-        </div>
+    <div
+      class="col-span-3 bg-gray-900 text-gray-100 rounded-lg shadow overflow-y-auto"
+    >
+      <!-- Platform Invite Button - More Prominent -->
+      <div
+        class="p-4 bg-gradient-to-r from-purple-600 to-indigo-600 border-b border-gray-700"
+      >
+        <button
+          @click="generatePlatformInviteCode()"
+          class="w-full px-4 py-3 bg-white bg-opacity-20 backdrop-blur-sm text-white rounded-lg hover:bg-opacity-30 transition-all duration-200 font-medium flex items-center justify-center shadow-lg"
+        >
+          <svg
+            class="h-5 w-5 mr-2"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
+            ></path>
+          </svg>
+          Invite New User to Platform
+        </button>
+        <p class="text-xs text-gray-200 mt-2 text-center">
+          Generate registration code for new users
+        </p>
+      </div>
 
-        <div class="mt-4">
+      <!-- Join Group Button -->
+      <div class="p-4 border-b border-gray-700">
+        <a
+          href="/join-group"
+          class="w-full px-3 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-600 text-sm font-medium flex items-center justify-center"
+        >
+          <svg
+            class="h-4 w-4 mr-2"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+            ></path>
+          </svg>
+          Join Existing Group
+        </a>
+      </div>
+
+      <!-- Timeleft Meet-Up Groups Section -->
+      <div class="border-b border-gray-700">
+        <div
+          class="px-3 py-2 flex items-center justify-between hover:bg-gray-800 cursor-pointer"
+          @click="toggleSection('timeleft')"
+        >
+          <div class="flex items-center">
+            <svg
+              class="h-4 w-4 mr-1 transition-transform"
+              :class="{'rotate-90': timeleftSectionExpanded}"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fill-rule="evenodd"
+                d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                clip-rule="evenodd"
+              ></path>
+            </svg>
+            <span
+              class="text-xs font-semibold uppercase tracking-wider text-gray-400"
+              >Timeleft Meet-Up Groups</span
+            >
+          </div>
           <button
-            @click="showCreateGroupModal = true"
-            class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            @click.stop="showCreateGroupModal = true"
+            class="text-gray-400 hover:text-white"
+            title="Create New Group"
           >
             <svg
-              class="h-4 w-4 mr-1"
+              class="h-4 w-4"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -418,44 +513,85 @@
                 d="M12 6v6m0 0v6m0-6h6m-6 0H6"
               ></path>
             </svg>
-            New Group
           </button>
+        </div>
+
+        <div x-show="timeleftSectionExpanded" class="px-3 pb-3 space-y-1">
+          <template x-for="group in timeleftGroups" :key="group.id">
+            <div class="flex items-center justify-between group">
+              <a
+                href="#"
+                @click.prevent="selectGroup(group)"
+                class="flex-1 block px-2 py-1 text-sm rounded hover:bg-gray-800 transition-colors"
+                :class="{'bg-gray-800': selectedGroup && selectedGroup.id === group.id}"
+              >
+                <span class="text-gray-300"># </span>
+                <span x-text="group.name"></span>
+              </a>
+              <button
+                x-show="group.owner_id === currentUser.id"
+                @click="generateGroupInviteCode(group.id)"
+                class="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-white p-1"
+                title="Get Invite Code"
+              >
+                <svg
+                  class="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+                  ></path>
+                </svg>
+              </button>
+            </div>
+          </template>
+
+          <div
+            x-show="timeleftGroups.length === 0"
+            class="text-gray-500 text-sm px-2 py-2"
+          >
+            No groups yet. Create one!
+          </div>
         </div>
       </div>
 
-      <!-- Channels section -->
-      <div x-show="selectedGroup" class="mb-6">
-        <div class="flex justify-between items-center mb-2">
-          <h3 class="text-md font-semibold text-gray-700">Channels</h3>
-          <button
-            x-show="isGroupOwner"
-            @click="showCreateChannelModal = true"
-            class="text-indigo-600 hover:text-indigo-800 text-sm"
-          >
-            + Add
-          </button>
-        </div>
-        <div class="space-y-1">
-          <template x-for="channel in channels" :key="channel.id">
-            <a
-              href="#"
-              @click.prevent="selectChannel(channel)"
-              class="block px-2 py-1 text-sm rounded hover:bg-indigo-50 transition-colors"
-              :class="{'bg-indigo-50': selectedChannel && selectedChannel.id === channel.id}"
+      <!-- General Groups Section -->
+      <div>
+        <div
+          class="px-3 py-2 flex items-center hover:bg-gray-800 cursor-pointer"
+          @click="toggleSection('general')"
+        >
+          <div class="flex items-center">
+            <svg
+              class="h-4 w-4 mr-1 transition-transform"
+              :class="{'rotate-90': generalSectionExpanded}"
+              fill="currentColor"
+              viewBox="0 0 20 20"
             >
-              # <span x-text="channel.name"></span>
-            </a>
-          </template>
-        </div>
-
-        <!-- Generate invite code button -->
-        <div x-show="isGroupOwner" class="mt-4">
+              <path
+                fill-rule="evenodd"
+                d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                clip-rule="evenodd"
+              ></path>
+            </svg>
+            <span
+              class="text-xs font-semibold uppercase tracking-wider text-gray-400"
+              >General Groups</span
+            >
+          </div>
           <button
-            @click="generateInviteCode()"
-            class="inline-flex items-center px-2 py-1 border border-transparent text-xs leading-4 font-medium rounded text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            x-show="currentUser && currentUser.is_superuser"
+            @click.stop="() => { newGroup.is_general = true; showCreateGroupModal = true; }"
+            class="ml-auto text-gray-400 hover:text-white"
+            title="Create New General Group (Admin Only)"
           >
             <svg
-              class="h-3 w-3 mr-1"
+              class="h-4 w-4"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -464,20 +600,42 @@
                 stroke-linecap="round"
                 stroke-linejoin="round"
                 stroke-width="2"
-                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                d="M12 6v6m0 0v6m0-6h6m-6 0H6"
               ></path>
             </svg>
-            Invite Code
           </button>
         </div>
+
+        <div x-show="generalSectionExpanded" class="px-3 pb-3 space-y-1">
+          <template x-for="group in generalGroups" :key="group.id">
+            <a
+              href="#"
+              @click.prevent="selectGroup(group)"
+              class="block px-2 py-1 text-sm rounded hover:bg-gray-800 transition-colors"
+              :class="{'bg-gray-800': selectedGroup && selectedGroup.id === group.id}"
+            >
+              <span class="text-gray-300"># </span>
+              <span x-text="group.name"></span>
+            </a>
+          </template>
+
+          <div
+            x-show="generalGroups.length === 0"
+            class="text-gray-500 text-sm px-2 py-2"
+          >
+            No general groups available
+          </div>
+        </div>
       </div>
+
+      <!-- Remove entire Channels section - Groups are now chat rooms -->
     </div>
 
     <!-- Main content area -->
     <div class="col-span-9 bg-white rounded-lg shadow">
-      <!-- Welcome message when no channel selected -->
+      <!-- Welcome message when no group selected -->
       <div
-        x-show="!selectedChannel"
+        x-show="!selectedGroup"
         class="h-full flex flex-col items-center justify-center p-6 text-center"
       >
         <div class="max-w-md">
@@ -485,21 +643,21 @@
             Welcome to Strangers Meet!
           </h2>
           <p class="text-gray-600 mb-6">
-            Select a group and channel from the sidebar to start chatting.
+            Select a group from the sidebar to start chatting.
           </p>
         </div>
       </div>
 
-      <!-- Channel content -->
-      <div x-show="selectedChannel" class="h-full flex flex-col">
-        <!-- Channel header -->
+      <!-- Group chat content -->
+      <div x-show="selectedGroup" class="h-full flex flex-col">
+        <!-- Group header -->
         <div class="border-b border-gray-200 p-4">
           <h3 class="text-lg font-semibold text-gray-800">
-            # <span x-text="selectedChannel ? selectedChannel.name : ''"></span>
+            # <span x-text="selectedGroup ? selectedGroup.name : ''"></span>
           </h3>
           <p
             class="text-sm text-gray-600"
-            x-text="selectedChannel ? selectedChannel.description : ''"
+            x-text="selectedGroup ? selectedGroup.description : ''"
           ></p>
         </div>
 
@@ -514,6 +672,7 @@
           >
             No messages yet. Start the conversation!
           </div>
+
           <template x-for="message in messages" :key="message.id">
             <div class="flex space-x-3">
               <div
@@ -567,7 +726,10 @@
       class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white"
     >
       <div class="mt-3">
-        <h3 class="text-lg font-medium text-gray-900 mb-4">Create New Group</h3>
+        <h3
+          class="text-lg font-medium text-gray-900 mb-4"
+          x-text="newGroup.is_general ? 'Create New General Group' : 'Create New Timeleft Meet-Up Group'"
+        ></h3>
         <form @submit.prevent="createGroup" class="space-y-4">
           <div>
             <label class="block text-sm font-medium text-gray-700"
@@ -590,7 +752,7 @@
               class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
             ></textarea>
           </div>
-          <div>
+          <div x-show="!newGroup.is_general">
             <label class="block text-sm font-medium text-gray-700"
               >Meetup Date (Optional)</label
             >
@@ -599,16 +761,6 @@
               x-model="newGroup.meetup_date"
               class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
             />
-          </div>
-          <div class="flex items-center">
-            <input
-              type="checkbox"
-              x-model="newGroup.is_general"
-              class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-            />
-            <label class="ml-2 block text-sm text-gray-900"
-              >General Group</label
-            >
           </div>
           <div class="flex justify-end space-x-3 pt-4">
             <button
@@ -630,9 +782,11 @@
     </div>
   </div>
 
-  <!-- Create Channel Modal -->
+  <!-- Remove Create Channel Modal - We don't need channels anymore -->
+
+  <!-- Group Invite Code Modal -->
   <div
-    x-show="showCreateChannelModal"
+    x-show="showGroupInviteModal"
     class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
   >
     <div
@@ -640,92 +794,64 @@
     >
       <div class="mt-3">
         <h3 class="text-lg font-medium text-gray-900 mb-4">
-          Create New Channel
+          Group Invitation Code
         </h3>
-        <form @submit.prevent="createChannel" class="space-y-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700"
-              >Channel Name</label
-            >
-            <input
-              type="text"
-              x-model="newChannel.name"
-              required
-              class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-            />
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700"
-              >Description</label
-            >
-            <textarea
-              x-model="newChannel.description"
-              rows="3"
-              class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-            ></textarea>
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700"
-              >Channel Type</label
-            >
-            <select
-              x-model="newChannel.type"
-              class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-            >
-              <option value="general">General</option>
-              <option value="hobby">Hobby</option>
-              <option value="interest">Interest</option>
-              <option value="meetup">Meetup</option>
-              <option value="other">Other</option>
-            </select>
-          </div>
-          <div class="flex justify-end space-x-3 pt-4">
-            <button
-              type="button"
-              @click="showCreateChannelModal = false; resetNewChannel()"
-              class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
-            >
-              Create Channel
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  </div>
-
-  <!-- Invite Code Modal -->
-  <div
-    x-show="showInviteCodeModal"
-    class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
-  >
-    <div
-      class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white"
-    >
-      <div class="mt-3">
-        <h3 class="text-lg font-medium text-gray-900 mb-4">Invitation Code</h3>
         <p class="text-sm text-gray-600 mb-4">
-          Share this code with people you want to invite to the group:
+          Share this code with people you want to invite to this group:
         </p>
         <div class="bg-gray-100 p-3 rounded-md border">
-          <code class="text-lg font-mono" x-text="inviteCode"></code>
+          <code class="text-lg font-mono" x-text="groupInviteCode"></code>
         </div>
         <div class="flex justify-end space-x-3 pt-4">
           <button
             type="button"
-            @click="copyInviteCode()"
+            @click="copyToClipboard(groupInviteCode)"
             class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
           >
             Copy Code
           </button>
           <button
             type="button"
-            @click="showInviteCodeModal = false"
+            @click="showGroupInviteModal = false"
+            class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Platform Invite Code Modal -->
+  <div
+    x-show="showPlatformInviteModal"
+    class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
+  >
+    <div
+      class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white"
+    >
+      <div class="mt-3">
+        <h3 class="text-lg font-medium text-gray-900 mb-4">
+          Platform Registration Code
+        </h3>
+        <p class="text-sm text-gray-600 mb-4">
+          Share this code with new users to allow them to register on Strangers
+          Meet:
+        </p>
+        <div class="bg-gray-100 p-3 rounded-md border">
+          <code class="text-lg font-mono" x-text="platformInviteCode"></code>
+        </div>
+        <div class="flex justify-end space-x-3 pt-4">
+          <button
+            type="button"
+            @click="copyToClipboard(platformInviteCode)"
+            class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+          >
+            Copy Code
+          </button>
+          <button
+            type="button"
+            @click="showPlatformInviteModal = false"
             class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
           >
             Close
@@ -736,5 +862,5 @@
   </div>
 </div>
 {% endblock %} {% block extra_js %}
-<!-- This block is now intentionally empty, as the script was moved above. -->
+<!-- Additional JavaScript if needed -->
 {% endblock %}

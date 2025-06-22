@@ -11,6 +11,7 @@ from app.db.base import get_db
 from app.auth.oauth import oauth, create_access_token, get_current_user
 from app.crud.user import get_or_create_user_by_google_info
 from app.crud.invitation import verify_invitation_code, use_invitation
+from app.crud.group import add_user_to_group, get_group
 from app.schemas.user import Token, User
 from app.schemas.invitation import InvitationVerify
 from app.config import settings
@@ -45,7 +46,7 @@ async def google_callback(
             "email": resp.get("email")
         })
         
-        # FIXED: Check if the user is NOT a superuser AND has no invitations.
+        # Check if the user is NOT a superuser AND has no invitations
         if not user.is_superuser and not user.invitations_received:
             temp_token = create_access_token(
                 data={"sub": user.email},
@@ -54,7 +55,7 @@ async def google_callback(
             redirect_url = f"{settings.FRONTEND_URL}/invite?token={temp_token}"
             return RedirectResponse(url=redirect_url)
         
-        # Admin users or users with invitations will proceed here.
+        # Admin users or users with invitations will proceed here
         access_token = create_access_token(
             data={"sub": user.email},
             expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -106,7 +107,7 @@ async def google_callback(
                     "email": user_info.get("email")
                 })
                 
-                # FIXED: Same check as above for the manual fallback flow.
+                # Check if the user is NOT a superuser AND has no invitations
                 if not user.is_superuser and not user.invitations_received:
                     temp_token = create_access_token(
                         data={"sub": user.email},
@@ -115,7 +116,7 @@ async def google_callback(
                     redirect_url = f"{settings.FRONTEND_URL}/invite?token={temp_token}"
                     return RedirectResponse(url=redirect_url)
                 
-                # Admin users or users with invitations will proceed here.
+                # Admin users or users with invitations will proceed here
                 access_token = create_access_token(
                     data={"sub": user.email},
                     expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -175,8 +176,26 @@ async def verify_invitation(
     invitation = await use_invitation(db, invitation.id, user.id)
     
     # Add user to the group
-    from app.crud.group import add_user_to_group
     await add_user_to_group(db, invitation.group_id, user.id)
+    
+    # Add user to general groups if this is their first invitation
+    # Get all general groups and add user to them
+    from sqlalchemy.future import select
+    from app.models.group import Group
+    
+    # Check if user has any other group memberships
+    user_groups = await db.execute(
+        select(Group).where(Group.members.any(id=user.id))
+    )
+    user_groups_count = len(user_groups.scalars().all())
+    
+    # If this is their first group (the one they just joined), add them to general groups
+    if user_groups_count <= 1:
+        general_groups = await db.execute(
+            select(Group).where(Group.is_general == True)
+        )
+        for group in general_groups.scalars().all():
+            await add_user_to_group(db, group.id, user.id)
     
     # Create a new access token for the fully registered user
     access_token = create_access_token(
@@ -187,6 +206,50 @@ async def verify_invitation(
     return {
         "access_token": access_token,
         "token_type": "bearer"
+    }
+
+@router.post("/join-group", response_model=Dict[str, str])
+async def join_group_with_code(
+    invitation_in: InvitationVerify,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Join a group using an invitation code (for already registered users).
+    """
+    # Verify invitation code
+    invitation = await verify_invitation_code(db, invitation_in.code)
+    if not invitation:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired invitation code"
+        )
+    
+    # Check if user is already a member of the group
+    group = await get_group(db, invitation.group_id)
+    if not group:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Group not found"
+        )
+    
+    member_ids = [member.id for member in group.members]
+    if current_user.id in member_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You are already a member of this group"
+        )
+    
+    # Add user to the group
+    await add_user_to_group(db, invitation.group_id, current_user.id)
+    
+    # Note: We don't mark the invitation as used for group invites
+    # This allows the same code to be used multiple times
+    
+    return {
+        "message": f"Successfully joined group: {group.name}",
+        "group_id": str(group.id),
+        "group_name": group.name
     }
 
 @router.get("/me", response_model=User)

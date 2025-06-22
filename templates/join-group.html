@@ -1,0 +1,170 @@
+{% extends "base.html" %} {% block title %}Join Group - Strangers Meet{%
+endblock %} {% block nav_links %}
+<li><a href="/app" class="hover:text-indigo-200">Dashboard</a></li>
+<li><a href="#" id="logout-btn" class="hover:text-indigo-200">Logout</a></li>
+{% endblock %} {% block content %}
+<div
+  class="flex flex-col items-center justify-center mt-10"
+  x-data="joinGroupForm()"
+  x-init="init()"
+>
+  <div class="text-center mb-10">
+    <h1 class="text-3xl font-bold text-indigo-700 mb-4">Join a Group</h1>
+    <p class="text-gray-600 max-w-2xl mx-auto">
+      Enter the group invitation code to join a Timeleft Meet-Up Group.
+    </p>
+  </div>
+
+  <div class="bg-white rounded-lg shadow-lg p-8 max-w-md w-full">
+    <div class="flex flex-col space-y-6">
+      <h2 class="text-2xl font-semibold text-center">
+        Enter Group Invitation Code
+      </h2>
+
+      <div
+        x-show="error"
+        class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative"
+        role="alert"
+      >
+        <span class="block sm:inline" x-text="error"></span>
+      </div>
+
+      <div
+        x-show="success"
+        class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative"
+        role="alert"
+      >
+        <span class="block sm:inline" x-text="success"></span>
+      </div>
+
+      <form @submit.prevent="joinGroup" class="space-y-4">
+        <div>
+          <label
+            for="group_code"
+            class="block text-sm font-medium text-gray-700"
+            >Group Invitation Code</label
+          >
+          <input
+            type="text"
+            id="group_code"
+            x-model="code"
+            class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+            placeholder="e.g. ADMIN-A12"
+            required
+          />
+          <p class="mt-2 text-sm text-gray-500">
+            Ask the group owner for their invitation code.
+          </p>
+        </div>
+
+        <div>
+          <button
+            type="submit"
+            class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            :disabled="loading"
+          >
+            <span x-show="!loading">Join Group</span>
+            <span x-show="loading" class="flex items-center">
+              <svg
+                class="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                ></circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+              Processing...
+            </span>
+          </button>
+        </div>
+      </form>
+
+      <div class="border-t border-gray-200 pt-4">
+        <a
+          href="/app"
+          class="text-sm text-indigo-600 hover:text-indigo-800 block text-center"
+        >
+          Back to Dashboard
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function joinGroupForm() {
+    return {
+      token: localStorage.getItem("token"),
+      code: "",
+      loading: false,
+      error: "",
+      success: "",
+
+      init() {
+        if (!this.token) {
+          window.location.href = "/login";
+        }
+
+        // Set up logout button
+        document.getElementById("logout-btn").addEventListener("click", (e) => {
+          e.preventDefault();
+          this.logout();
+        });
+      },
+
+      async joinGroup() {
+        this.loading = true;
+        this.error = "";
+        this.success = "";
+
+        try {
+          const response = await fetch("/api/v1/auth/join-group", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${this.token}`,
+            },
+            body: JSON.stringify({
+              code: this.code,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || "Failed to join group");
+          }
+
+          const data = await response.json();
+          this.success = data.message + " Redirecting to dashboard...";
+
+          // Redirect after a short delay
+          setTimeout(() => {
+            window.location.href = "/app";
+          }, 2000);
+        } catch (error) {
+          this.error = error.message || "An unexpected error occurred";
+        } finally {
+          this.loading = false;
+        }
+      },
+
+      logout() {
+        localStorage.removeItem("token");
+        window.location.href = "/login";
+      },
+    };
+  }
+</script>
+{% endblock %}

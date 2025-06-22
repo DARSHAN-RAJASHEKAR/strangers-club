@@ -1,10 +1,10 @@
-# app/api/endpoints/messages.py
 from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 import json
+import logging
 
 from app.db.base import get_db
 from app.auth.oauth import get_current_active_user, get_current_user
@@ -14,31 +14,60 @@ from app.crud import group as crud_group
 from app.schemas.message import Message, MessageCreate, MessageUpdate
 from app.schemas.user import User
 
+# Set up logging
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
 # Class to manage WebSocket connections for chat
 class ConnectionManager:
     def __init__(self):
-        # channel_id -> list of WebSocket connections
-        self.active_connections: Dict[str, List[WebSocket]] = {}
+        # channel_id -> list of (WebSocket, user_id) tuples
+        self.active_connections: Dict[str, List[tuple]] = {}
 
-    async def connect(self, websocket: WebSocket, channel_id: str):
+    async def connect(self, websocket: WebSocket, channel_id: str, user_id: str):
         await websocket.accept()
         if channel_id not in self.active_connections:
             self.active_connections[channel_id] = []
-        self.active_connections[channel_id].append(websocket)
+        self.active_connections[channel_id].append((websocket, user_id))
+        logger.info(f"WebSocket connected for channel {channel_id}, user {user_id}")
 
-    def disconnect(self, websocket: WebSocket, channel_id: str):
+    def disconnect(self, websocket: WebSocket, channel_id: str, user_id: str):
         if channel_id in self.active_connections:
-            if websocket in self.active_connections[channel_id]:
-                self.active_connections[channel_id].remove(websocket)
+            # Remove the specific connection
+            self.active_connections[channel_id] = [
+                (ws, uid) for ws, uid in self.active_connections[channel_id] 
+                if ws != websocket
+            ]
+            # Clean up empty channel lists
             if not self.active_connections[channel_id]:
                 del self.active_connections[channel_id]
+        logger.info(f"WebSocket disconnected for channel {channel_id}, user {user_id}")
 
-    async def broadcast(self, message: dict, channel_id: str):
+    async def broadcast(self, message: dict, channel_id: str, exclude_user_id: str = None):
+        """Broadcast message to all connections in a channel, optionally excluding a user"""
         if channel_id in self.active_connections:
-            for connection in self.active_connections[channel_id]:
-                await connection.send_text(json.dumps(message))
+            disconnected = []
+            for websocket, user_id in self.active_connections[channel_id]:
+                # Skip the user who sent the message to avoid duplication
+                if exclude_user_id and user_id == exclude_user_id:
+                    continue
+                    
+                try:
+                    await websocket.send_text(json.dumps(message))
+                except Exception as e:
+                    logger.error(f"Error sending message to websocket: {e}")
+                    disconnected.append((websocket, user_id))
+            
+            # Remove disconnected connections
+            for ws, uid in disconnected:
+                self.disconnect(ws, channel_id, uid)
+
+    def get_connected_users(self, channel_id: str) -> List[str]:
+        """Get list of connected user IDs for a channel"""
+        if channel_id in self.active_connections:
+            return [user_id for _, user_id in self.active_connections[channel_id]]
+        return []
 
 manager = ConnectionManager()
 
@@ -75,7 +104,7 @@ async def create_message(
     current_user: User = Depends(get_current_active_user)
 ):
     """
-    Create a new message in a channel.
+    Create a new message in a channel via HTTP (fallback for when WebSocket is not available).
     """
     # Check if user is a member of the group that owns the channel
     channel = await crud_channel.get_channel(db, channel_id)
@@ -96,6 +125,7 @@ async def create_message(
     
     # Broadcast the message to all connected WebSocket clients
     message_dict = {
+        "type": "new_message",
         "id": str(message.id),
         "content": message.content,
         "author": {
@@ -185,6 +215,7 @@ async def websocket_endpoint(
     """
     WebSocket endpoint for real-time messaging.
     """
+    user = None
     try:
         # Authenticate the user
         user = await get_current_user(token=token, db=db)
@@ -201,14 +232,22 @@ async def websocket_endpoint(
             return
         
         # Accept the connection
-        await manager.connect(websocket, channel_id)
+        await manager.connect(websocket, channel_id, str(user.id))
         
         # Send connection established message
         await websocket.send_text(json.dumps({
             "type": "connection_established",
             "user": user.username,
-            "channel_id": channel_id
+            "channel_id": channel_id,
+            "connected_users": manager.get_connected_users(channel_id)
         }))
+        
+        # Notify other users that someone joined
+        await manager.broadcast({
+            "type": "user_connected",
+            "user": user.username,
+            "channel_id": channel_id
+        }, channel_id, exclude_user_id=str(user.id))
         
         try:
             while True:
@@ -218,52 +257,95 @@ async def websocket_endpoint(
                 # Process the message
                 try:
                     message_data = json.loads(data)
+                    logger.info(f"Received WebSocket message: {message_data}")
                     
-                    # Create a new message in the database
-                    message_in = MessageCreate(
-                        content=message_data.get("content", ""),
-                        channel_id=UUID(channel_id)
-                    )
-                    
-                    message = await crud_message.create_message(
-                        db, message_in, author_id=user.id
-                    )
-                    
-                    # Broadcast the message to all connected clients
-                    message_dict = {
-                        "type": "new_message",
-                        "id": str(message.id),
-                        "content": message.content,
-                        "author": {
-                            "id": str(message.author_id),
-                            "username": user.username
-                        },
-                        "channel_id": str(message.channel_id),
-                        "created_at": message.created_at.isoformat()
-                    }
-                    await manager.broadcast(message_dict, channel_id)
-                    
+                    if message_data.get("type") == "new_message":
+                        # Create a new message in the database
+                        message_in = MessageCreate(
+                            content=message_data.get("content", ""),
+                            channel_id=UUID(channel_id)
+                        )
+                        
+                        message = await crud_message.create_message(
+                            db, message_in, author_id=user.id
+                        )
+                        
+                        # Broadcast the message to all connected clients
+                        message_dict = {
+                            "type": "new_message",
+                            "id": str(message.id),
+                            "content": message.content,
+                            "author": {
+                                "id": str(message.author_id),
+                                "username": user.username
+                            },
+                            "channel_id": str(message.channel_id),
+                            "created_at": message.created_at.isoformat()
+                        }
+                        
+                        # Send to the sender first (immediate feedback)
+                        await websocket.send_text(json.dumps({
+                            **message_dict,
+                            "type": "message_sent"  # Special type for sender confirmation
+                        }))
+                        
+                        # Then broadcast to others
+                        await manager.broadcast(message_dict, channel_id, exclude_user_id=str(user.id))
+                        
+                    elif message_data.get("type") == "typing":
+                        # Handle typing indicators
+                        typing_dict = {
+                            "type": "typing",
+                            "user": user.username,
+                            "channel_id": channel_id,
+                            "is_typing": message_data.get("is_typing", False)
+                        }
+                        await manager.broadcast(typing_dict, channel_id, exclude_user_id=str(user.id))
+                        
+                except json.JSONDecodeError:
+                    await websocket.send_text(json.dumps({
+                        "type": "error",
+                        "message": "Invalid JSON format"
+                    }))
                 except Exception as e:
-                    # Send error message to the client
+                    logger.error(f"Error processing WebSocket message: {e}")
                     await websocket.send_text(json.dumps({
                         "type": "error",
                         "message": str(e)
                     }))
                     
         except WebSocketDisconnect:
-            # Handle client disconnect
-            manager.disconnect(websocket, channel_id)
+            logger.info(f"WebSocket disconnected for user {user.username}")
             
-            # Broadcast user left message
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        try:
+            await websocket.close(code=1008, reason=str(e))
+        except:
+            pass
+    finally:
+        # Clean up connection
+        if user:
+            manager.disconnect(websocket, channel_id, str(user.id))
+            
+            # Notify other users that someone left
             await manager.broadcast({
                 "type": "user_disconnected",
                 "user": user.username,
                 "channel_id": channel_id
             }, channel_id)
-            
-    except Exception as e:
-        # Handle authentication or other errors
-        try:
-            await websocket.close(code=1008, reason=str(e))
-        except:
-            pass
+
+@router.get("/ws/status/{channel_id}")
+async def get_websocket_status(
+    channel_id: str,
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Get WebSocket connection status for a channel.
+    """
+    connected_users = manager.get_connected_users(channel_id)
+    return {
+        "channel_id": channel_id,
+        "connected_users_count": len(connected_users),
+        "connected_users": connected_users
+    }

@@ -27,6 +27,10 @@
       isGroupOwner: false,
       timeleftSectionExpanded: true,
       generalSectionExpanded: true,
+      isConnected: false,
+      isReconnecting: false,
+      typingUsers: [],
+      typingTimeout: null,
       newGroup: {
         name: "",
         description: "",
@@ -98,6 +102,9 @@
         this.messages = [];
         this.isGroupOwner = group.owner_id === this.currentUser.id;
 
+        // Close existing WebSocket connection
+        this.closeWebSocket();
+
         // Get the default channel for this group
         const response = await fetch(`/api/v1/groups/${group.id}/channels`, {
           headers: { Authorization: `Bearer ${this.token}` },
@@ -123,93 +130,240 @@
         }
         this.messages = await response.json();
         this.$nextTick(() => {
-          const container = document.getElementById("messages-container");
-          if (container) container.scrollTop = container.scrollHeight;
+          this.scrollToBottom();
         });
       },
 
       setupWebSocket(channelId) {
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
         const host = window.location.host;
-        this.socket = new WebSocket(
-          `${protocol}//${host}/api/v1/messages/ws/${channelId}?token=${this.token}`
-        );
+        const wsUrl = `${protocol}//${host}/api/v1/messages/ws/${channelId}?token=${this.token}`;
+
+        console.log("Connecting to WebSocket:", wsUrl);
+        this.socket = new WebSocket(wsUrl);
 
         this.socket.onopen = () => {
           console.log(
             "WebSocket connection established for channel:",
             channelId
           );
+          this.isConnected = true;
+          this.isReconnecting = false;
         };
 
         this.socket.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-          if (data.type === "new_message") {
-            this.messages.push(data);
-            this.$nextTick(() => {
-              const container = document.getElementById("messages-container");
-              if (container) container.scrollTop = container.scrollHeight;
-            });
+          try {
+            const data = JSON.parse(event.data);
+            console.log("WebSocket message received:", data);
+
+            this.handleWebSocketMessage(data);
+          } catch (error) {
+            console.error("Error parsing WebSocket message:", error);
           }
         };
 
         this.socket.onclose = (event) => {
           console.log("WebSocket connection closed:", event.code, event.reason);
+          this.isConnected = false;
+
+          // Auto-reconnect if the connection was unexpectedly closed
+          if (
+            event.code !== 1000 &&
+            this.selectedChannel &&
+            !this.isReconnecting
+          ) {
+            this.isReconnecting = true;
+            setTimeout(() => {
+              if (this.selectedChannel) {
+                console.log("Attempting to reconnect WebSocket...");
+                this.setupWebSocket(this.selectedChannel.id);
+              }
+            }, 3000);
+          }
         };
 
         this.socket.onerror = (error) => {
           console.error("WebSocket error:", error);
+          this.isConnected = false;
         };
+      },
+
+      handleWebSocketMessage(data) {
+        switch (data.type) {
+          case "connection_established":
+            console.log("WebSocket connection established");
+            break;
+
+          case "new_message":
+          case "message_sent":
+            // Add the message to the list
+            this.messages.push(data);
+            this.$nextTick(() => {
+              this.scrollToBottom();
+            });
+            break;
+
+          case "message_update":
+            // Update existing message
+            const messageIndex = this.messages.findIndex(
+              (m) => m.id === data.id
+            );
+            if (messageIndex !== -1) {
+              this.messages[messageIndex].content = data.content;
+              this.messages[messageIndex].updated_at = data.updated_at;
+            }
+            break;
+
+          case "message_delete":
+            // Remove message from list
+            this.messages = this.messages.filter((m) => m.id !== data.id);
+            break;
+
+          case "user_connected":
+            console.log(`${data.user} connected to the channel`);
+            break;
+
+          case "user_disconnected":
+            console.log(`${data.user} disconnected from the channel`);
+            break;
+
+          case "typing":
+            this.handleTypingIndicator(data);
+            break;
+
+          case "error":
+            console.error("WebSocket error:", data.message);
+            break;
+
+          default:
+            console.log("Unknown WebSocket message type:", data.type);
+        }
+      },
+
+      handleTypingIndicator(data) {
+        if (data.is_typing) {
+          if (!this.typingUsers.includes(data.user)) {
+            this.typingUsers.push(data.user);
+          }
+        } else {
+          this.typingUsers = this.typingUsers.filter(
+            (user) => user !== data.user
+          );
+        }
+      },
+
+      sendWebSocketMessage(message) {
+        if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+          this.socket.send(JSON.stringify(message));
+          return true;
+        }
+        return false;
       },
 
       async sendMessage() {
         if (!this.newMessage.trim() || !this.selectedChannel) return;
 
-        try {
-          const response = await fetch(
-            `/api/v1/messages/channel/${this.selectedChannel.id}`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${this.token}`,
-              },
-              body: JSON.stringify({
-                content: this.newMessage,
-                channel_id: this.selectedChannel.id,
-              }),
+        const messageContent = this.newMessage.trim();
+        this.newMessage = ""; // Clear immediately for better UX
+
+        // Try to send via WebSocket first
+        const webSocketMessage = {
+          type: "new_message",
+          content: messageContent,
+          channel_id: this.selectedChannel.id,
+        };
+
+        const sentViaWebSocket = this.sendWebSocketMessage(webSocketMessage);
+
+        // If WebSocket failed, fall back to HTTP
+        if (!sentViaWebSocket) {
+          console.log("WebSocket not available, using HTTP fallback");
+          try {
+            const response = await fetch(
+              `/api/v1/messages/channel/${this.selectedChannel.id}`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${this.token}`,
+                },
+                body: JSON.stringify({
+                  content: messageContent,
+                  channel_id: this.selectedChannel.id,
+                }),
+              }
+            );
+
+            if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.detail || "Failed to send message");
             }
-          );
 
-          if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.detail || "Failed to send message");
+            const message = await response.json();
+
+            // Add message to UI if not already added by WebSocket
+            const messageExists = this.messages.some(
+              (m) => m.id === message.id
+            );
+            if (!messageExists) {
+              const formattedMessage = {
+                id: message.id,
+                content: message.content,
+                author: {
+                  id: this.currentUser.id,
+                  username: this.currentUser.username,
+                },
+                channel_id: message.channel_id,
+                created_at: message.created_at,
+              };
+              this.messages.push(formattedMessage);
+              this.$nextTick(() => {
+                this.scrollToBottom();
+              });
+            }
+          } catch (error) {
+            console.error("Error sending message:", error);
+            alert(`Failed to send message: ${error.message}`);
+            // Restore message content on error
+            this.newMessage = messageContent;
           }
+        }
+      },
 
-          const message = await response.json();
+      sendTypingIndicator(isTyping) {
+        if (this.typingTimeout) {
+          clearTimeout(this.typingTimeout);
+        }
 
-          if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
-            const formattedMessage = {
-              id: message.id,
-              content: message.content,
-              author: {
-                id: this.currentUser.id,
-                username: this.currentUser.username,
-              },
-              channel_id: message.channel_id,
-              created_at: message.created_at,
-            };
-            this.messages.push(formattedMessage);
-            this.$nextTick(() => {
-              const container = document.getElementById("messages-container");
-              if (container) container.scrollTop = container.scrollHeight;
+        this.sendWebSocketMessage({
+          type: "typing",
+          is_typing: isTyping,
+        });
+
+        if (isTyping) {
+          // Auto-stop typing after 3 seconds
+          this.typingTimeout = setTimeout(() => {
+            this.sendWebSocketMessage({
+              type: "typing",
+              is_typing: false,
             });
-          }
+          }, 3000);
+        }
+      },
 
-          this.newMessage = "";
-        } catch (error) {
-          console.error("Error sending message:", error);
-          alert(`Failed to send message: ${error.message}`);
+      closeWebSocket() {
+        if (this.socket) {
+          this.isConnected = false;
+          this.isReconnecting = false;
+          this.socket.close(1000); // Normal closure
+          this.socket = null;
+        }
+      },
+
+      scrollToBottom() {
+        const container = document.getElementById("messages-container");
+        if (container) {
+          container.scrollTop = container.scrollHeight;
         }
       },
 
@@ -248,36 +402,6 @@
         }
       },
 
-      async createChannel() {
-        if (!this.selectedGroup) return;
-
-        try {
-          const response = await fetch(
-            `/api/v1/groups/${this.selectedGroup.id}/channels`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${this.token}`,
-              },
-              body: JSON.stringify(this.newChannel),
-            }
-          );
-
-          if (!response.ok) {
-            throw new Error("Failed to create channel");
-          }
-
-          const channel = await response.json();
-          this.channels.push(channel);
-          this.showCreateChannelModal = false;
-          this.resetNewChannel();
-        } catch (error) {
-          console.error("Error creating channel:", error);
-          alert("Failed to create channel. Please try again.");
-        }
-      },
-
       async generateGroupInviteCode(groupId) {
         try {
           const response = await fetch(
@@ -306,8 +430,6 @@
 
       async generatePlatformInviteCode() {
         try {
-          // For now, we'll use a dummy general group ID
-          // In production, this should be a dedicated endpoint for platform invites
           const response = await fetch("/api/v1/invitations", {
             method: "POST",
             headers: {
@@ -370,10 +492,24 @@
 
       logout() {
         localStorage.removeItem("token");
-        if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-          this.socket.close();
-        }
+        this.closeWebSocket();
         window.location.href = "/login";
+      },
+
+      // Event handlers for typing indicators
+      onMessageInputFocus() {
+        this.sendTypingIndicator(true);
+      },
+
+      onMessageInputBlur() {
+        this.sendTypingIndicator(false);
+      },
+
+      onMessageInputKeydown() {
+        // Send typing indicator when user starts typing
+        if (!this.typingTimeout) {
+          this.sendTypingIndicator(true);
+        }
       },
     };
   }
@@ -420,7 +556,22 @@
     <div
       class="col-span-3 bg-gray-900 text-gray-100 rounded-lg shadow overflow-y-auto"
     >
-      <!-- Platform Invite Button - More Prominent -->
+      <!-- Connection Status Indicator -->
+      <div class="px-4 py-2 bg-gray-800 border-b border-gray-700">
+        <div class="flex items-center space-x-2">
+          <div
+            class="w-2 h-2 rounded-full"
+            :class="isConnected ? 'bg-green-400' : (isReconnecting ? 'bg-yellow-400' : 'bg-red-400')"
+          ></div>
+          <span class="text-xs text-gray-300">
+            <span x-show="isConnected">Connected</span>
+            <span x-show="isReconnecting">Reconnecting...</span>
+            <span x-show="!isConnected && !isReconnecting">Disconnected</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- Platform Invite Button -->
       <div
         class="p-4 bg-gradient-to-r from-purple-600 to-indigo-600 border-b border-gray-700"
       >
@@ -627,8 +778,6 @@
           </div>
         </div>
       </div>
-
-      <!-- Remove entire Channels section - Groups are now chat rooms -->
     </div>
 
     <!-- Main content area -->
@@ -694,6 +843,23 @@
               </div>
             </div>
           </template>
+
+          <!-- Typing indicators -->
+          <div x-show="typingUsers.length > 0" class="flex space-x-3">
+            <div class="avatar-initial bg-gray-400">...</div>
+            <div class="flex-1">
+              <div class="typing-indicator">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+              <p class="text-xs text-gray-500 mt-1">
+                <span x-text="typingUsers.join(', ')"></span>
+                <span x-text="typingUsers.length === 1 ? 'is' : 'are'"></span>
+                typing...
+              </p>
+            </div>
+          </div>
         </div>
 
         <!-- Message input -->
@@ -702,12 +868,16 @@
             <input
               type="text"
               x-model="newMessage"
+              @focus="onMessageInputFocus"
+              @blur="onMessageInputBlur"
+              @keydown="onMessageInputKeydown"
               placeholder="Type your message..."
               class="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             />
             <button
               type="submit"
-              class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+              :disabled="!newMessage.trim()"
+              class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Send
             </button>
@@ -781,8 +951,6 @@
       </div>
     </div>
   </div>
-
-  <!-- Remove Create Channel Modal - We don't need channels anymore -->
 
   <!-- Group Invite Code Modal -->
   <div

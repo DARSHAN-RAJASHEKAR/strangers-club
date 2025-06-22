@@ -71,6 +71,7 @@ async def create_group(
 ) -> Group:
     """
     Create a new group with a default general channel.
+    If it's a general group, automatically add all existing users.
     """
     # First, get the owner object from the DB
     owner = await db.get(User, owner_id)
@@ -88,6 +89,19 @@ async def create_group(
     
     # Add owner as a member
     db_group.members.append(owner)
+    
+    # If this is a general group, add ALL existing users to it
+    if group_in.is_general:
+        # Get all active users
+        result = await db.execute(
+            select(User).where(User.is_active == True)
+        )
+        all_users = result.scalars().all()
+        
+        # Add all users to the group (except owner who is already added)
+        for user in all_users:
+            if user.id != owner_id:
+                db_group.members.append(user)
     
     db.add(db_group)
     await db.flush()
@@ -172,3 +186,30 @@ async def remove_user_from_group(
     await db.refresh(group, attribute_names=['members'])
     
     return group
+
+
+async def add_new_user_to_general_groups(db: AsyncSession, user_id: UUID) -> None:
+    """
+    Add a newly registered user to all existing general groups.
+    This should be called when a user completes registration.
+    """
+    # Get all general groups
+    result = await db.execute(
+        select(Group)
+        .where(Group.is_general == True)
+        .options(selectinload(Group.members))
+    )
+    general_groups = result.scalars().all()
+    
+    # Get the user
+    user = await db.get(User, user_id)
+    if not user:
+        return
+    
+    # Add user to each general group if not already a member
+    for group in general_groups:
+        member_ids = [member.id for member in group.members]
+        if user.id not in member_ids:
+            group.members.append(user)
+    
+    await db.commit()

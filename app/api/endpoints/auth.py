@@ -11,7 +11,7 @@ from app.db.base import get_db
 from app.auth.oauth import oauth, create_access_token, get_current_user
 from app.crud.user import get_or_create_user_by_google_info
 from app.crud.invitation import verify_invitation_code, use_invitation
-from app.crud.group import add_user_to_group, get_group
+from app.crud.group import add_user_to_group, get_group, add_new_user_to_general_groups
 from app.schemas.user import Token, User
 from app.schemas.invitation import InvitationVerify
 from app.config import settings
@@ -175,27 +175,11 @@ async def verify_invitation(
     # Use the invitation
     invitation = await use_invitation(db, invitation.id, user.id)
     
-    # Add user to the group
+    # Add user to the specific group
     await add_user_to_group(db, invitation.group_id, user.id)
     
-    # Add user to general groups if this is their first invitation
-    # Get all general groups and add user to them
-    from sqlalchemy.future import select
-    from app.models.group import Group
-    
-    # Check if user has any other group memberships
-    user_groups = await db.execute(
-        select(Group).where(Group.members.any(id=user.id))
-    )
-    user_groups_count = len(user_groups.scalars().all())
-    
-    # If this is their first group (the one they just joined), add them to general groups
-    if user_groups_count <= 1:
-        general_groups = await db.execute(
-            select(Group).where(Group.is_general == True)
-        )
-        for group in general_groups.scalars().all():
-            await add_user_to_group(db, group.id, user.id)
+    # Add user to ALL general groups (improved logic)
+    await add_new_user_to_general_groups(db, user.id)
     
     # Create a new access token for the fully registered user
     access_token = create_access_token(

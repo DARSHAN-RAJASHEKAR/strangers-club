@@ -4,8 +4,7 @@ from fastapi.security import OAuth2PasswordBearer
 from authlib.integrations.starlette_client import OAuth
 from starlette.config import Config
 from starlette.requests import Request
-import jwt
-from jwt.exceptions import InvalidTokenError as JWTErrorfrom
+from jose import jwt, JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, Dict, Any
 import os

@@ -11,15 +11,15 @@
       currentUser: null,
       timeleftGroups: [],
       generalGroups: [],
-      channels: [],
       messages: [],
       selectedGroup: null,
       selectedChannel: null,
       newMessage: "",
       loading: true,
       socket: null,
+      isConnected: false,
+      messageQueue: [], // WhatsApp-like message queuing
       showCreateGroupModal: false,
-      showCreateChannelModal: false,
       showGroupInviteModal: false,
       showPlatformInviteModal: false,
       groupInviteCode: "",
@@ -27,8 +27,6 @@
       isGroupOwner: false,
       timeleftSectionExpanded: true,
       generalSectionExpanded: true,
-      isConnected: false,
-      isReconnecting: false,
       typingUsers: [],
       typingTimeout: null,
       newGroup: {
@@ -36,11 +34,6 @@
         description: "",
         meetup_date: null,
         is_general: false,
-      },
-      newChannel: {
-        name: "",
-        description: "",
-        type: "general",
       },
 
       async init() {
@@ -54,6 +47,7 @@
         try {
           await this.fetchCurrentUser();
           await this.fetchGroups();
+          this.loadLocalMessages(); // Load cached messages
 
           document
             .getElementById("logout-btn")
@@ -91,7 +85,6 @@
           throw { status: response.status, message: "Failed to fetch groups" };
         const allGroups = await response.json();
 
-        // Separate groups into Timeleft Meet-Up Groups and General Groups
         this.timeleftGroups = allGroups.filter((g) => !g.is_general);
         this.generalGroups = allGroups.filter((g) => g.is_general);
       },
@@ -102,17 +95,14 @@
         this.messages = [];
         this.isGroupOwner = group.owner_id === this.currentUser.id;
 
-        // Close existing WebSocket connection
         this.closeWebSocket();
 
-        // Get the default channel for this group
         const response = await fetch(`/api/v1/groups/${group.id}/channels`, {
           headers: { Authorization: `Bearer ${this.token}` },
         });
         if (response.ok) {
           const channels = await response.json();
           if (channels.length > 0) {
-            // Use the first (general) channel but don't show it in UI
             this.selectedChannel = channels[0];
             await this.fetchMessages(this.selectedChannel.id);
             this.setupWebSocket(this.selectedChannel.id);
@@ -129,6 +119,13 @@
           return;
         }
         this.messages = await response.json();
+
+        // Mark all server messages as delivered
+        this.messages.forEach((msg) => {
+          if (!msg.status) msg.status = "delivered";
+        });
+
+        this.saveLocalMessages(); // Cache messages locally
         this.$nextTick(() => {
           this.scrollToBottom();
         });
@@ -139,43 +136,35 @@
         const host = window.location.host;
         const wsUrl = `${protocol}//${host}/api/v1/messages/ws/${channelId}?token=${this.token}`;
 
-        console.log("Connecting to WebSocket:", wsUrl);
+        console.log("🔌 Connecting to real-time chat...");
         this.socket = new WebSocket(wsUrl);
 
         this.socket.onopen = () => {
-          console.log(
-            "WebSocket connection established for channel:",
-            channelId
-          );
+          console.log("✅ Connected to real-time chat");
           this.isConnected = true;
-          this.isReconnecting = false;
+          this.processMessageQueue(); // Send queued messages
         };
 
         this.socket.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
-            console.log("WebSocket message received:", data);
-
             this.handleWebSocketMessage(data);
           } catch (error) {
-            console.error("Error parsing WebSocket message:", error);
+            console.error("Error parsing message:", error);
           }
         };
 
         this.socket.onclose = (event) => {
-          console.log("WebSocket connection closed:", event.code, event.reason);
+          console.log("❌ Disconnected from real-time chat");
           this.isConnected = false;
 
-          // Auto-reconnect if the connection was unexpectedly closed
-          if (
-            event.code !== 1000 &&
-            this.selectedChannel &&
-            !this.isReconnecting
-          ) {
-            this.isReconnecting = true;
+          // No status changes needed - messages stay as they are
+
+          // Auto-reconnect
+          if (event.code !== 1000 && this.selectedChannel) {
             setTimeout(() => {
               if (this.selectedChannel) {
-                console.log("Attempting to reconnect WebSocket...");
+                console.log("🔄 Reconnecting...");
                 this.setupWebSocket(this.selectedChannel.id);
               }
             }, 3000);
@@ -183,7 +172,7 @@
         };
 
         this.socket.onerror = (error) => {
-          console.error("WebSocket error:", error);
+          console.error("💥 Real-time chat error:", error);
           this.isConnected = false;
         };
       },
@@ -191,40 +180,26 @@
       handleWebSocketMessage(data) {
         switch (data.type) {
           case "connection_established":
-            console.log("WebSocket connection established");
             break;
 
           case "new_message":
+            // Incoming message from others
+            this.addMessage(data, "delivered");
+            break;
+
           case "message_sent":
-            // Add the message to the list
-            this.messages.push(data);
-            this.$nextTick(() => {
-              this.scrollToBottom();
-            });
+            // Confirmation our message was sent
+            this.updateMessageStatus(data.tempId || data.id, "sent", data);
             break;
 
-          case "message_update":
-            // Update existing message
-            const messageIndex = this.messages.findIndex(
-              (m) => m.id === data.id
-            );
-            if (messageIndex !== -1) {
-              this.messages[messageIndex].content = data.content;
-              this.messages[messageIndex].updated_at = data.updated_at;
-            }
+          case "message_delivered":
+            // Message was delivered to recipient
+            this.updateMessageStatus(data.id, "delivered");
             break;
 
-          case "message_delete":
-            // Remove message from list
-            this.messages = this.messages.filter((m) => m.id !== data.id);
-            break;
-
-          case "user_connected":
-            console.log(`${data.user} connected to the channel`);
-            break;
-
-          case "user_disconnected":
-            console.log(`${data.user} disconnected from the channel`);
+          case "message_read":
+            // Message was read by recipient
+            this.updateMessageStatus(data.id, "read");
             break;
 
           case "typing":
@@ -232,11 +207,174 @@
             break;
 
           case "error":
-            console.error("WebSocket error:", data.message);
+            console.error("Chat error:", data.message);
             break;
+        }
+      },
 
+      addMessage(messageData, status = "delivered") {
+        const message = {
+          id: messageData.id,
+          tempId: messageData.tempId,
+          content: messageData.content,
+          author: messageData.author,
+          channel_id: messageData.channel_id,
+          created_at: messageData.created_at,
+          status: status,
+          isMine: messageData.author?.id === this.currentUser?.id,
+        };
+
+        this.messages.push(message);
+        this.saveLocalMessages();
+        this.$nextTick(() => {
+          this.scrollToBottom();
+        });
+      },
+
+      updateMessageStatus(messageId, status, newData = null) {
+        const message = this.messages.find(
+          (m) => m.id === messageId || m.tempId === messageId
+        );
+
+        if (message) {
+          message.status = status;
+          if (newData) {
+            message.id = newData.id;
+            message.created_at = newData.created_at;
+          }
+          this.saveLocalMessages();
+        }
+      },
+
+      generateTempId() {
+        return (
+          "temp_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9)
+        );
+      },
+
+      async sendMessage() {
+        if (!this.newMessage.trim() || !this.selectedChannel) return;
+
+        const messageContent = this.newMessage.trim();
+        const tempId = this.generateTempId();
+
+        // Create optimistic message (clean, no sending status)
+        const optimisticMessage = {
+          tempId: tempId,
+          content: messageContent,
+          author: {
+            id: this.currentUser.id,
+            username: this.currentUser.username,
+          },
+          channel_id: this.selectedChannel.id,
+          created_at: new Date().toISOString(),
+          status: "sent", // Start with sent status
+          isMine: true,
+        };
+
+        // Add to UI immediately
+        this.messages.push(optimisticMessage);
+        this.newMessage = ""; // Clear input
+        this.saveLocalMessages();
+        this.$nextTick(() => {
+          this.scrollToBottom();
+        });
+
+        const messageToSend = {
+          type: "new_message",
+          tempId: tempId,
+          content: messageContent,
+          channel_id: this.selectedChannel.id,
+        };
+
+        if (this.isConnected) {
+          // Send via WebSocket
+          try {
+            this.socket.send(JSON.stringify(messageToSend));
+          } catch (error) {
+            console.error("Failed to send via WebSocket:", error);
+            this.queueMessage(messageToSend);
+            // Keep as 'sent' - no visual change for user
+          }
+        } else {
+          // Queue for later
+          this.queueMessage(messageToSend);
+          // Keep as 'sent' - no visual change for user
+        }
+      },
+
+      queueMessage(message) {
+        this.messageQueue.push(message);
+        console.log("📬 Message queued for delivery");
+      },
+
+      processMessageQueue() {
+        if (this.messageQueue.length === 0) return;
+
+        console.log(`📤 Sending ${this.messageQueue.length} queued messages`);
+
+        const queue = [...this.messageQueue];
+        this.messageQueue = [];
+
+        queue.forEach((message) => {
+          try {
+            this.socket.send(JSON.stringify(message));
+            // Update status to sent (clean transition)
+            this.updateMessageStatus(message.tempId, "sent");
+          } catch (error) {
+            console.error("Failed to send queued message:", error);
+            this.messageQueue.push(message); // Re-queue on failure
+          }
+        });
+      },
+
+      // Local storage for offline-first approach
+      saveLocalMessages() {
+        if (!this.selectedChannel) return;
+        const key = `messages_${this.selectedChannel.id}`;
+        try {
+          localStorage.setItem(key, JSON.stringify(this.messages));
+        } catch (error) {
+          console.error("Failed to save messages locally:", error);
+        }
+      },
+
+      loadLocalMessages() {
+        if (!this.selectedChannel) return;
+        const key = `messages_${this.selectedChannel.id}`;
+        try {
+          const cached = localStorage.getItem(key);
+          if (cached) {
+            this.messages = JSON.parse(cached);
+          }
+        } catch (error) {
+          console.error("Failed to load cached messages:", error);
+        }
+      },
+
+      getMessageStatusIcon(status) {
+        switch (status) {
+          case "sent":
+            return "✓"; // Single tick
+          case "delivered":
+            return "✓✓"; // Double tick
+          case "read":
+            return "✓✓"; // Blue double tick (would be blue in CSS)
           default:
-            console.log("Unknown WebSocket message type:", data.type);
+            return "";
+        }
+      },
+
+      getMessageStatusClass(status) {
+        switch (status) {
+          case "sent":
+            return "text-gray-500";
+          case "delivered":
+            return "text-gray-600";
+          case "read":
+            return "text-blue-500";
+          default:
+            return "text-gray-400";
         }
       },
 
@@ -252,111 +390,39 @@
         }
       },
 
-      sendWebSocketMessage(message) {
-        if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-          this.socket.send(JSON.stringify(message));
-          return true;
-        }
-        return false;
-      },
-
-      async sendMessage() {
-        if (!this.newMessage.trim() || !this.selectedChannel) return;
-
-        const messageContent = this.newMessage.trim();
-        this.newMessage = ""; // Clear immediately for better UX
-
-        // Try to send via WebSocket first
-        const webSocketMessage = {
-          type: "new_message",
-          content: messageContent,
-          channel_id: this.selectedChannel.id,
-        };
-
-        const sentViaWebSocket = this.sendWebSocketMessage(webSocketMessage);
-
-        // If WebSocket failed, fall back to HTTP
-        if (!sentViaWebSocket) {
-          console.log("WebSocket not available, using HTTP fallback");
-          try {
-            const response = await fetch(
-              `/api/v1/messages/channel/${this.selectedChannel.id}`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${this.token}`,
-                },
-                body: JSON.stringify({
-                  content: messageContent,
-                  channel_id: this.selectedChannel.id,
-                }),
-              }
-            );
-
-            if (!response.ok) {
-              const errorData = await response.json();
-              throw new Error(errorData.detail || "Failed to send message");
-            }
-
-            const message = await response.json();
-
-            // Add message to UI if not already added by WebSocket
-            const messageExists = this.messages.some(
-              (m) => m.id === message.id
-            );
-            if (!messageExists) {
-              const formattedMessage = {
-                id: message.id,
-                content: message.content,
-                author: {
-                  id: this.currentUser.id,
-                  username: this.currentUser.username,
-                },
-                channel_id: message.channel_id,
-                created_at: message.created_at,
-              };
-              this.messages.push(formattedMessage);
-              this.$nextTick(() => {
-                this.scrollToBottom();
-              });
-            }
-          } catch (error) {
-            console.error("Error sending message:", error);
-            alert(`Failed to send message: ${error.message}`);
-            // Restore message content on error
-            this.newMessage = messageContent;
-          }
-        }
-      },
-
       sendTypingIndicator(isTyping) {
         if (this.typingTimeout) {
           clearTimeout(this.typingTimeout);
         }
 
-        this.sendWebSocketMessage({
-          type: "typing",
-          is_typing: isTyping,
-        });
+        if (this.isConnected) {
+          this.socket.send(
+            JSON.stringify({
+              type: "typing",
+              is_typing: isTyping,
+            })
+          );
+        }
 
         if (isTyping) {
-          // Auto-stop typing after 3 seconds
           this.typingTimeout = setTimeout(() => {
-            this.sendWebSocketMessage({
-              type: "typing",
-              is_typing: false,
-            });
+            if (this.isConnected) {
+              this.socket.send(
+                JSON.stringify({
+                  type: "typing",
+                  is_typing: false,
+                })
+              );
+            }
           }, 3000);
         }
       },
 
       closeWebSocket() {
         if (this.socket) {
-          this.isConnected = false;
-          this.isReconnecting = false;
-          this.socket.close(1000); // Normal closure
+          this.socket.close(1000);
           this.socket = null;
+          this.isConnected = false;
         }
       },
 
@@ -367,6 +433,7 @@
         }
       },
 
+      // ... (other methods remain the same) ...
       async createGroup() {
         try {
           const response = await fetch("/api/v1/groups", {
@@ -378,13 +445,10 @@
             body: JSON.stringify(this.newGroup),
           });
 
-          if (!response.ok) {
-            throw new Error("Failed to create group");
-          }
+          if (!response.ok) throw new Error("Failed to create group");
 
           const group = await response.json();
 
-          // Add to appropriate list based on group type
           if (group.is_general) {
             this.generalGroups.push(group);
           } else {
@@ -393,8 +457,6 @@
 
           this.showCreateGroupModal = false;
           this.resetNewGroup();
-
-          // Auto-select the newly created group
           await this.selectGroup(group);
         } catch (error) {
           console.error("Error creating group:", error);
@@ -415,9 +477,7 @@
             }
           );
 
-          if (!response.ok) {
-            throw new Error("Failed to generate invite code");
-          }
+          if (!response.ok) throw new Error("Failed to generate invite code");
 
           const invitation = await response.json();
           this.groupInviteCode = invitation.code;
@@ -441,9 +501,8 @@
             }),
           });
 
-          if (!response.ok) {
+          if (!response.ok)
             throw new Error("Failed to generate platform invite code");
-          }
 
           const invitation = await response.json();
           this.platformInviteCode = invitation.code;
@@ -457,12 +516,8 @@
       copyToClipboard(text) {
         navigator.clipboard
           .writeText(text)
-          .then(() => {
-            alert("Invite code copied to clipboard!");
-          })
-          .catch(() => {
-            alert("Failed to copy invite code");
-          });
+          .then(() => alert("Invite code copied to clipboard!"))
+          .catch(() => alert("Failed to copy invite code"));
       },
 
       toggleSection(section) {
@@ -482,21 +537,12 @@
         };
       },
 
-      resetNewChannel() {
-        this.newChannel = {
-          name: "",
-          description: "",
-          type: "general",
-        };
-      },
-
       logout() {
         localStorage.removeItem("token");
         this.closeWebSocket();
         window.location.href = "/login";
       },
 
-      // Event handlers for typing indicators
       onMessageInputFocus() {
         this.sendTypingIndicator(true);
       },
@@ -506,7 +552,6 @@
       },
 
       onMessageInputKeydown() {
-        // Send typing indicator when user starts typing
         if (!this.typingTimeout) {
           this.sendTypingIndicator(true);
         }
@@ -556,17 +601,22 @@
     <div
       class="col-span-3 bg-gray-900 text-gray-100 rounded-lg shadow overflow-y-auto"
     >
-      <!-- Connection Status Indicator -->
+      <!-- Connection indicator -->
       <div class="px-4 py-2 bg-gray-800 border-b border-gray-700">
         <div class="flex items-center space-x-2">
           <div
             class="w-2 h-2 rounded-full"
-            :class="isConnected ? 'bg-green-400' : (isReconnecting ? 'bg-yellow-400' : 'bg-red-400')"
+            :class="isConnected ? 'bg-green-400' : 'bg-red-400'"
           ></div>
-          <span class="text-xs text-gray-300">
-            <span x-show="isConnected">Connected</span>
-            <span x-show="isReconnecting">Reconnecting...</span>
-            <span x-show="!isConnected && !isReconnecting">Disconnected</span>
+          <span
+            class="text-xs text-gray-300"
+            x-text="isConnected ? 'Real-time chat active' : 'Offline mode'"
+          ></span>
+          <span
+            x-show="messageQueue.length > 0"
+            class="text-xs text-yellow-400"
+          >
+            (📬 <span x-text="messageQueue.length"></span> queued)
           </span>
         </div>
       </div>
@@ -622,6 +672,7 @@
         </a>
       </div>
 
+      <!-- Groups sections -->
       <!-- Timeleft Meet-Up Groups Section -->
       <div class="border-b border-gray-700">
         <div
@@ -822,14 +873,30 @@
             No messages yet. Start the conversation!
           </div>
 
-          <template x-for="message in messages" :key="message.id">
-            <div class="flex space-x-3">
+          <template
+            x-for="message in messages"
+            :key="message.id || message.tempId"
+          >
+            <div
+              class="flex space-x-3"
+              :class="message.isMine ? 'justify-end' : ''"
+            >
+              <!-- Avatar for others -->
               <div
+                x-show="!message.isMine"
                 class="avatar-initial"
                 x-text="message.author && message.author.username ? message.author.username.charAt(0) : 'U'"
               ></div>
-              <div class="flex-1">
-                <div class="flex items-baseline space-x-2">
+
+              <div
+                class="flex-1 max-w-xs lg:max-w-md"
+                :class="message.isMine ? 'text-right' : ''"
+              >
+                <!-- Username and time for others -->
+                <div
+                  x-show="!message.isMine"
+                  class="flex items-baseline space-x-2 mb-1"
+                >
                   <span
                     class="font-medium text-gray-900"
                     x-text="message.author && message.author.username ? message.author.username : 'Unknown User'"
@@ -839,8 +906,38 @@
                     x-text="new Date(message.created_at).toLocaleTimeString()"
                   ></span>
                 </div>
-                <p class="text-gray-700 mt-1" x-text="message.content"></p>
+
+                <!-- Message bubble -->
+                <div
+                  class="relative inline-block p-3 rounded-lg"
+                  :class="message.isMine ? 'bg-indigo-500 text-white ml-auto' : 'bg-gray-100 text-gray-900'"
+                >
+                  <p x-text="message.content"></p>
+
+                  <!-- Message status and time for own messages -->
+                  <div
+                    x-show="message.isMine"
+                    class="flex items-center justify-end space-x-1 mt-1"
+                  >
+                    <span
+                      class="text-xs opacity-75"
+                      x-text="new Date(message.created_at).toLocaleTimeString()"
+                    ></span>
+                    <span
+                      class="text-xs"
+                      :class="getMessageStatusClass(message.status)"
+                      x-text="getMessageStatusIcon(message.status)"
+                    ></span>
+                  </div>
+                </div>
               </div>
+
+              <!-- Avatar for own messages -->
+              <div
+                x-show="message.isMine"
+                class="avatar-initial bg-indigo-600"
+                x-text="currentUser ? currentUser.username.charAt(0) : 'U'"
+              ></div>
             </div>
           </template>
 

@@ -1,10 +1,11 @@
+from datetime import datetime, timedelta
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from authlib.integrations.starlette_client import OAuth
 from starlette.config import Config
 from starlette.requests import Request
-from jose import jwt, JWTError
-from datetime import datetime, timedelta
+import jwt
+from jwt.exceptions import InvalidTokenError as JWTErrorfrom
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, Dict, Any
 import os

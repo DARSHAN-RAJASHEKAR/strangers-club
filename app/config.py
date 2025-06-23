@@ -1,8 +1,30 @@
+# app/config.py - Clean working version
+
 import os
 import secrets
-from typing import Optional, Dict, Any, List
+from typing import List
 from pydantic_settings import BaseSettings
 from pydantic import validator
+
+def get_database_url() -> str:
+    """Get database URL with proper async driver"""
+    db_url = os.getenv("DATABASE_URL")
+    
+    if db_url:
+        # Convert postgres:// to postgresql+asyncpg:// for async SQLAlchemy
+        if db_url.startswith("postgres://"):
+            db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif db_url.startswith("postgresql://"):
+            db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return db_url
+    
+    # Fallback for development
+    return "sqlite+aiosqlite:///./strangers_meet.db"
+
+def get_google_redirect_uri() -> str:
+    """Get Google OAuth redirect URI based on environment"""
+    frontend_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000")
+    return f"{frontend_url}/api/v1/auth/google/callback"
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Strangers Meet"
@@ -23,35 +45,10 @@ class Settings(BaseSettings):
     # Google OAuth
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
     GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    GOOGLE_REDIRECT_URI: str = get_google_redirect_uri()
     
-    @property
-    def GOOGLE_REDIRECT_URI(self) -> str:
-        """Dynamic redirect URI based on environment"""
-        if self.FRONTEND_URL and self.FRONTEND_URL != "http://localhost:8000":
-            return f"{self.FRONTEND_URL}/api/v1/auth/google/callback"
-        return "http://localhost:8000/api/v1/auth/google/callback"
-    
-    # Database - FIXED: Proper async driver handling
-    DATABASE_URL: str = ""
-    
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.DATABASE_URL = self._get_database_url()
-    
-    def _get_database_url(self) -> str:
-        """Get database URL with proper async driver"""
-        db_url = os.getenv("DATABASE_URL")
-        
-        if db_url:
-            # Convert postgres:// to postgresql+asyncpg:// for async SQLAlchemy
-            if db_url.startswith("postgres://"):
-                db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
-            elif db_url.startswith("postgresql://"):
-                db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-            return db_url
-        
-        # Fallback for development
-        return "sqlite+aiosqlite:///./strangers_meet.db"
+    # Database
+    DATABASE_URL: str = get_database_url()
     
     # Debug mode
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
@@ -66,7 +63,7 @@ class Settings(BaseSettings):
     ]
     
     @validator("CORS_ORIGINS", pre=True)
-    def parse_cors_origins(cls, v: Any) -> List[str]:
+    def parse_cors_origins(cls, v):
         if isinstance(v, str) and not v.startswith("["):
             origins = [i.strip() for i in v.split(",") if i.strip()]
         elif isinstance(v, list):
@@ -94,15 +91,18 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# Debugging info
+# Debug output
 if os.getenv("RENDER"):
     print(f"🚀 Running on Render: {settings.FRONTEND_URL}")
-    print(f"📊 Database: {settings.DATABASE_URL.split('@')[0]}@[HIDDEN]")
+    print(f"📊 Database: {settings.DATABASE_URL.split('@')[0] if '@' in settings.DATABASE_URL else 'SQLite'}")
     
     if "sqlite" in settings.DATABASE_URL:
         print("⚠️  WARNING: Using SQLite - data will be lost on restart!")
     else:
-        print("✅ Using PostgreSQL with async driver - data will persist!")
+        print("✅ Using PostgreSQL with async driver")
         
-    if settings.GOOGLE_CLIENT_ID and "localhost" in settings.GOOGLE_REDIRECT_URI:
-        print(f"⚠️  Update Google OAuth redirect to: {settings.GOOGLE_REDIRECT_URI}")
+    print(f"🔗 OAuth Redirect: {settings.GOOGLE_REDIRECT_URI}")
+else:
+    print("💻 Development mode")
+    print(f"📊 Database: SQLite")
+    print(f"🔗 OAuth Redirect: {settings.GOOGLE_REDIRECT_URI}")

@@ -1,5 +1,3 @@
-# app/config.py - Clean working version
-
 import os
 import secrets
 from typing import List
@@ -7,18 +5,17 @@ from pydantic_settings import BaseSettings
 from pydantic import validator
 
 def get_database_url() -> str:
-    """Get database URL with proper async driver"""
+    """Get database URL with proper async driver - FORCED asyncpg"""
     db_url = os.getenv("DATABASE_URL")
     
     if db_url:
-        # Handle different PostgreSQL URL formats
-        if db_url.startswith("postgres://"):
-            # Convert postgres:// to postgresql+asyncpg://
-            db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
-        elif db_url.startswith("postgresql://") and "+asyncpg" not in db_url:
-            # Add asyncpg driver to postgresql://
-            db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-        
+        # Force asyncpg driver for any PostgreSQL URL
+        if "postgresql" in db_url or "postgres" in db_url:
+            # Remove any existing driver specification
+            if "://" in db_url:
+                protocol, rest = db_url.split("://", 1)
+                # Force asyncpg driver
+                return f"postgresql+asyncpg://{rest}"
         return db_url
     
     # Fallback for development
@@ -50,7 +47,7 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
     GOOGLE_REDIRECT_URI: str = get_google_redirect_uri()
     
-    # Database
+    # Database - FORCED asyncpg
     DATABASE_URL: str = get_database_url()
     
     # Debug mode

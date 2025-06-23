@@ -115,7 +115,7 @@ async def update_invitation(
     
     # If marking as used, set the used_at timestamp
     if invitation_data.get("is_used") and not db_invitation.is_used:
-        invitation_data["used_at"] = datetime.utcnow()
+        invitation_data["used_at"] = datetime.now(timezone.utc)
     
     for key, value in invitation_data.items():
         setattr(db_invitation, key, value)
@@ -188,7 +188,7 @@ async def use_invitation(
     
     invitation.is_used = True
     invitation.invitee_id = invitee_id
-    invitation.used_at = datetime.utcnow()
+    invitation.used_at = datetime.now(timezone.utc)
     
     await db.commit()
     await db.refresh(invitation)

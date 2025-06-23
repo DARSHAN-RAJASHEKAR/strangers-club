@@ -1,3 +1,4 @@
+# app/api/endpoints/auth.py
 import os
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from fastapi.responses import RedirectResponse
@@ -66,9 +67,7 @@ async def login_google(request: Request):
             "response_type": "code",
             "scope": "openid email profile",
             "redirect_uri": settings.GOOGLE_REDIRECT_URI,
-            "state": state,
-            "access_type": "offline",
-            "prompt": "consent"
+            "state": state
         }
         
         # Build URL

@@ -9,60 +9,75 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     
     # Environment detection
-    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+    ENVIRONMENT: str = os.getenv("RENDER", "production" if os.getenv("RENDER") else "development")
     
-    # Base URL for frontend - Use environment variable or default
-    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:8000")
+    # Base URL for frontend
+    FRONTEND_URL: str = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000")
     
-    # Security - Use consistent secrets across workers
+    # Security
     SECRET_KEY: str = os.getenv("SECRET_KEY", secrets.token_urlsafe(32))
     JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", secrets.token_urlsafe(32))
     JWT_ALGORITHM: str = "HS256"
-    # 60 minutes * 24 hours * 7 days = 7 days
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
     
-    # Google OAuth - Updated for production
+    # Google OAuth
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
     GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
-    GOOGLE_REDIRECT_URI: str = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/v1/auth/google/callback")
     
-    # Database - Support both SQLite and PostgreSQL
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./strangers_meet.db")
+    @property
+    def GOOGLE_REDIRECT_URI(self) -> str:
+        """Dynamic redirect URI based on environment"""
+        if self.FRONTEND_URL and self.FRONTEND_URL != "http://localhost:8000":
+            return f"{self.FRONTEND_URL}/api/v1/auth/google/callback"
+        return "http://localhost:8000/api/v1/auth/google/callback"
     
-    # Invitation code settings
-    INVITATION_CODE_LENGTH: int = 6  # 2 letters + 4 digits
+    # Database - FIXED: Proper async driver handling
+    DATABASE_URL: str = ""
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.DATABASE_URL = self._get_database_url()
+    
+    def _get_database_url(self) -> str:
+        """Get database URL with proper async driver"""
+        db_url = os.getenv("DATABASE_URL")
+        
+        if db_url:
+            # Convert postgres:// to postgresql+asyncpg:// for async SQLAlchemy
+            if db_url.startswith("postgres://"):
+                db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
+            elif db_url.startswith("postgresql://"):
+                db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            return db_url
+        
+        # Fallback for development
+        return "sqlite+aiosqlite:///./strangers_meet.db"
     
     # Debug mode
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
     
-    # CORS settings - Include production URLs
+    # CORS origins
     CORS_ORIGINS: List[str] = [
-        "http://localhost:8000", 
-        "http://localhost:3000", 
+        "http://localhost:8000",
+        "http://localhost:3000",
+        os.getenv("RENDER_EXTERNAL_URL", ""),
         "https://timeleft.club",
         "https://www.timeleft.club"
     ]
     
     @validator("CORS_ORIGINS", pre=True)
     def parse_cors_origins(cls, v: Any) -> List[str]:
-        """Parse CORS_ORIGINS from string to list."""
         if isinstance(v, str) and not v.startswith("["):
-            return [i.strip() for i in v.split(",")]
-        elif isinstance(v, (list, str)):
-            return v
-        raise ValueError(v)
+            origins = [i.strip() for i in v.split(",") if i.strip()]
+        elif isinstance(v, list):
+            origins = [origin for origin in v if origin]
+        else:
+            origins = []
+        return origins
     
-    @validator("DATABASE_URL")
-    def validate_database_url(cls, v: str) -> str:
-        # Convert postgres:// to postgresql:// for SQLAlchemy compatibility
-        if v.startswith("postgres://"):
-            v = v.replace("postgres://", "postgresql://", 1)
-        return v
-    
-    # Helper properties
     @property
     def is_production(self) -> bool:
-        return self.ENVIRONMENT == "production"
+        return os.getenv("RENDER") is not None or self.ENVIRONMENT == "production"
     
     @property
     def use_https(self) -> bool:
@@ -70,7 +85,6 @@ class Settings(BaseSettings):
     
     @property
     def session_secret(self) -> str:
-        """Get session secret, falling back to SECRET_KEY"""
         return os.getenv("SESSION_SECRET", self.SECRET_KEY)
     
     class Config:
@@ -80,12 +94,15 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# Validate critical settings
-if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
-    if settings.is_production:
-        raise ValueError("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set in production")
+# Debugging info
+if os.getenv("RENDER"):
+    print(f"🚀 Running on Render: {settings.FRONTEND_URL}")
+    print(f"📊 Database: {settings.DATABASE_URL.split('@')[0]}@[HIDDEN]")
+    
+    if "sqlite" in settings.DATABASE_URL:
+        print("⚠️  WARNING: Using SQLite - data will be lost on restart!")
     else:
-        print("Warning: Google OAuth credentials not set. OAuth will not work.")
-
-if settings.is_production and settings.SECRET_KEY == secrets.token_urlsafe(32):
-    print("Warning: Using default SECRET_KEY in production. Please set a fixed SECRET_KEY environment variable.")
+        print("✅ Using PostgreSQL with async driver - data will persist!")
+        
+    if settings.GOOGLE_CLIENT_ID and "localhost" in settings.GOOGLE_REDIRECT_URI:
+        print(f"⚠️  Update Google OAuth redirect to: {settings.GOOGLE_REDIRECT_URI}")

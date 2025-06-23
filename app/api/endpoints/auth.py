@@ -6,6 +6,9 @@ from datetime import timedelta
 import httpx
 from typing import Dict, Any
 from jose import jwt
+import secrets
+import hashlib
+import base64
 
 from app.db.base import get_db
 from app.auth.oauth import oauth, create_access_token, get_current_user
@@ -18,35 +21,113 @@ from app.config import settings
 
 router = APIRouter()
 
+# In-memory state storage for OAuth (production should use Redis)
+oauth_states = {}
+
+def generate_state():
+    """Generate a cryptographically secure state parameter"""
+    return secrets.token_urlsafe(32)
+
+def store_state(state: str, expires_in: int = 600):
+    """Store state with expiration (10 minutes)"""
+    import time
+    oauth_states[state] = time.time() + expires_in
+    
+def verify_state(state: str) -> bool:
+    """Verify state and clean up expired states"""
+    import time
+    current_time = time.time()
+    
+    # Clean up expired states
+    expired_keys = [k for k, v in oauth_states.items() if v < current_time]
+    for key in expired_keys:
+        del oauth_states[key]
+    
+    # Check if state exists and is valid
+    if state in oauth_states and oauth_states[state] > current_time:
+        del oauth_states[state]  # One-time use
+        return True
+    return False
+
 @router.get("/login/google")
 async def login_google(request: Request):
     """
-    Redirect to Google OAuth login page.
+    Redirect to Google OAuth login page with improved state management.
     """
-    redirect_uri = settings.GOOGLE_REDIRECT_URI
-    return await oauth.google.authorize_redirect(request, redirect_uri)
+    try:
+        # Generate and store state
+        state = generate_state()
+        store_state(state)
+        
+        # Build authorization URL manually for better control
+        google_auth_url = "https://accounts.google.com/o/oauth2/v2/auth"
+        params = {
+            "client_id": settings.GOOGLE_CLIENT_ID,
+            "response_type": "code",
+            "scope": "openid email profile",
+            "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+            "state": state,
+            "access_type": "offline",
+            "prompt": "consent"
+        }
+        
+        # Build URL
+        query_string = "&".join([f"{k}={v}" for k, v in params.items()])
+        auth_url = f"{google_auth_url}?{query_string}"
+        
+        return RedirectResponse(url=auth_url)
+        
+    except Exception as e:
+        print(f"Error in login_google: {e}")
+        return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=auth_init_failed")
 
 @router.get("/google/callback")
 async def google_callback(
     request: Request,
     code: str = None,
     state: str = None,
+    error: str = None,
     db: AsyncSession = Depends(get_db)
 ) -> Dict[str, Any]:
     """
-    Handle Google OAuth callback with workaround for state mismatch issue.
+    Handle Google OAuth callback with robust error handling.
     """
     try:
-        # Try the standard OAuth flow
-        token = await oauth.google.authorize_access_token(request)
-        resp = await oauth.google.parse_id_token(request, token)
+        # Check for OAuth errors
+        if error:
+            print(f"OAuth error: {error}")
+            return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=oauth_denied")
         
+        if not code:
+            print("No authorization code received")
+            return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=no_code")
+        
+        if not state:
+            print("No state parameter received")
+            return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=no_state")
+        
+        # Verify state parameter
+        if not verify_state(state):
+            print(f"State verification failed: {state}")
+            return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=state_mismatch")
+        
+        # Exchange authorization code for tokens
+        token_data = await exchange_code_for_tokens(code)
+        if not token_data:
+            return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=token_exchange_failed")
+        
+        # Get user info
+        user_info = await get_google_user_info(token_data.get("access_token"))
+        if not user_info:
+            return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=user_info_failed")
+        
+        # Get or create user
         user = await get_or_create_user_by_google_info(db, {
-            "id": resp.get("sub"),
-            "email": resp.get("email")
+            "id": user_info.get("sub"),
+            "email": user_info.get("email")
         })
         
-        # Check if the user is NOT a superuser AND has no invitations
+        # Check if the user needs to complete registration
         if not user.is_superuser and not user.invitations_received:
             temp_token = create_access_token(
                 data={"sub": user.email},
@@ -55,7 +136,7 @@ async def google_callback(
             redirect_url = f"{settings.FRONTEND_URL}/invite?token={temp_token}"
             return RedirectResponse(url=redirect_url)
         
-        # Admin users or users with invitations will proceed here
+        # Create access token for authenticated user
         access_token = create_access_token(
             data={"sub": user.email},
             expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -63,75 +144,60 @@ async def google_callback(
         
         redirect_url = f"{settings.FRONTEND_URL}/app?token={access_token}"
         return RedirectResponse(url=redirect_url)
-    
-    except Exception as e:
-        # If there's a state mismatch or other error, try the manual approach
-        if code:
-            try:
-                # Manually exchange the authorization code for tokens
-                token_endpoint = "https://oauth2.googleapis.com/token"
-                data = {
-                    "code": code,
-                    "client_id": settings.GOOGLE_CLIENT_ID,
-                    "client_secret": settings.GOOGLE_CLIENT_SECRET,
-                    "redirect_uri": settings.GOOGLE_REDIRECT_URI,
-                    "grant_type": "authorization_code"
-                }
-                
-                async with httpx.AsyncClient() as client:
-                    resp = await client.post(token_endpoint, data=data)
-                    token_data = resp.json()
-                
-                if "error" in token_data:
-                    return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=token_error")
-                
-                # Get user info using userinfo endpoint
-                access_token_google = token_data.get("access_token")
-                if not access_token_google:
-                    return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=no_access_token")
-                
-                userinfo_endpoint = "https://www.googleapis.com/oauth2/v3/userinfo"
-                async with httpx.AsyncClient() as client:
-                    userinfo_resp = await client.get(
-                        userinfo_endpoint,
-                        headers={"Authorization": f"Bearer {access_token_google}"}
-                    )
-                    user_info = userinfo_resp.json()
-                
-                if "error" in user_info or "sub" not in user_info:
-                    return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=userinfo_error")
-                
-                # Get or create user
-                user = await get_or_create_user_by_google_info(db, {
-                    "id": user_info.get("sub"),
-                    "email": user_info.get("email")
-                })
-                
-                # Check if the user is NOT a superuser AND has no invitations
-                if not user.is_superuser and not user.invitations_received:
-                    temp_token = create_access_token(
-                        data={"sub": user.email},
-                        expires_delta=timedelta(minutes=30)
-                    )
-                    redirect_url = f"{settings.FRONTEND_URL}/invite?token={temp_token}"
-                    return RedirectResponse(url=redirect_url)
-                
-                # Admin users or users with invitations will proceed here
-                access_token = create_access_token(
-                    data={"sub": user.email},
-                    expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-                )
-                
-                redirect_url = f"{settings.FRONTEND_URL}/app?token={access_token}"
-                return RedirectResponse(url=redirect_url)
-                
-            except Exception as manual_error:
-                import traceback
-                traceback.print_exc()
-                return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=authentication_failed")
         
-        # If no authorization code or other issue
-        return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=authentication_failed")
+    except Exception as e:
+        print(f"Error in google_callback: {e}")
+        import traceback
+        traceback.print_exc()
+        return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=callback_error")
+
+async def exchange_code_for_tokens(code: str) -> Dict[str, Any]:
+    """
+    Exchange authorization code for access tokens.
+    """
+    try:
+        token_endpoint = "https://oauth2.googleapis.com/token"
+        data = {
+            "code": code,
+            "client_id": settings.GOOGLE_CLIENT_ID,
+            "client_secret": settings.GOOGLE_CLIENT_SECRET,
+            "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+            "grant_type": "authorization_code"
+        }
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(token_endpoint, data=data)
+            
+            if response.status_code != 200:
+                print(f"Token exchange failed: {response.status_code} - {response.text}")
+                return None
+                
+            return response.json()
+            
+    except Exception as e:
+        print(f"Error in token exchange: {e}")
+        return None
+
+async def get_google_user_info(access_token: str) -> Dict[str, Any]:
+    """
+    Get user information from Google using access token.
+    """
+    try:
+        userinfo_endpoint = "https://www.googleapis.com/oauth2/v3/userinfo"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(userinfo_endpoint, headers=headers)
+            
+            if response.status_code != 200:
+                print(f"User info failed: {response.status_code} - {response.text}")
+                return None
+                
+            return response.json()
+            
+    except Exception as e:
+        print(f"Error getting user info: {e}")
+        return None
 
 @router.post("/verify-invitation", response_model=Token)
 async def verify_invitation(
@@ -178,7 +244,7 @@ async def verify_invitation(
     # Add user to the specific group
     await add_user_to_group(db, invitation.group_id, user.id)
     
-    # Add user to ALL general groups (improved logic)
+    # Add user to ALL general groups
     await add_new_user_to_general_groups(db, user.id)
     
     # Create a new access token for the fully registered user
@@ -226,9 +292,6 @@ async def join_group_with_code(
     
     # Add user to the group
     await add_user_to_group(db, invitation.group_id, current_user.id)
-    
-    # Note: We don't mark the invitation as used for group invites
-    # This allows the same code to be used multiple times
     
     return {
         "message": f"Successfully joined group: {group.name}",

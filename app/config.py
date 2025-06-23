@@ -8,17 +8,20 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Strangers Meet"
     API_V1_STR: str = "/api/v1"
     
+    # Environment detection
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+    
     # Base URL for frontend - Use environment variable or default
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:8000")
     
-    # Security
+    # Security - Use consistent secrets across workers
     SECRET_KEY: str = os.getenv("SECRET_KEY", secrets.token_urlsafe(32))
     JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", secrets.token_urlsafe(32))
     JWT_ALGORITHM: str = "HS256"
     # 60 minutes * 24 hours * 7 days = 7 days
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
     
-    # Google OAuth
+    # Google OAuth - Updated for production
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
     GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
     GOOGLE_REDIRECT_URI: str = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/v1/auth/google/callback")
@@ -56,9 +59,33 @@ class Settings(BaseSettings):
             v = v.replace("postgres://", "postgresql://", 1)
         return v
     
+    # Helper properties
+    @property
+    def is_production(self) -> bool:
+        return self.ENVIRONMENT == "production"
+    
+    @property
+    def use_https(self) -> bool:
+        return self.is_production or self.FRONTEND_URL.startswith("https://")
+    
+    @property
+    def session_secret(self) -> str:
+        """Get session secret, falling back to SECRET_KEY"""
+        return os.getenv("SESSION_SECRET", self.SECRET_KEY)
+    
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = True
 
 settings = Settings()
+
+# Validate critical settings
+if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
+    if settings.is_production:
+        raise ValueError("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set in production")
+    else:
+        print("Warning: Google OAuth credentials not set. OAuth will not work.")
+
+if settings.is_production and settings.SECRET_KEY == secrets.token_urlsafe(32):
+    print("Warning: Using default SECRET_KEY in production. Please set a fixed SECRET_KEY environment variable.")

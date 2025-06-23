@@ -1,3 +1,4 @@
+# app/main.py
 import datetime
 import os
 from fastapi import FastAPI, Depends, HTTPException, Request
@@ -24,20 +25,24 @@ app = FastAPI(
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
 
-# Add SessionMiddleware for OAuth
-app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY,
-                   session_cookie="session",
-                   max_age=60 * 60 * 24 * 7,
-                   same_site="lax",
-                   https_only=False)
+# Add SessionMiddleware with production-ready settings
+app.add_middleware(
+    SessionMiddleware, 
+    secret_key=settings.session_secret,
+    session_cookie="sessionid",
+    max_age=60 * 60 * 24 * 7,  # 7 days
+    same_site="lax",
+    https_only=settings.use_https
+)
 
-# Set up CORS
+# Set up CORS with production settings
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"]
 )
 
 # Set up templates
@@ -82,7 +87,6 @@ async def init_db():
             session.add(admin)
             await session.commit()
             await session.refresh(admin)
-        
 
 # Root route
 @app.get("/", response_class=HTMLResponse)
@@ -122,7 +126,7 @@ async def app_page(request: Request):
 # Health check endpoint
 @app.get("/health")
 async def health_check():
-    return {"status": "ok"}
+    return {"status": "ok", "environment": os.getenv("ENVIRONMENT", "development")}
 
 def create_jinja2_environment():
     env = templates.env
@@ -130,8 +134,10 @@ def create_jinja2_environment():
         "now": lambda format_string: datetime.datetime.now().strftime(format_string)
     })
     return env
+
 templates.env = create_jinja2_environment()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
+    # Use single worker for development
     uvicorn.run("app.main:app", host="0.0.0.0", port=port, reload=False)

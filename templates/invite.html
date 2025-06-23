@@ -115,45 +115,102 @@ Meet{% endblock %} {% block content %}
         this.success = "";
 
         try {
+          // Validate input
+          if (!this.code || this.code.trim().length === 0) {
+            throw new Error("Please enter an invitation code");
+          }
+
+          const cleanCode = this.code.trim().toUpperCase();
+
           // First, verify if the invitation code is valid
+          console.log(`Verifying invitation code: ${cleanCode}`);
+
           const verifyResponse = await fetch(
-            `/api/v1/invitations/verify/${this.code}`
+            `/api/v1/invitations/verify/${encodeURIComponent(cleanCode)}`,
+            {
+              method: "GET",
+              headers: {
+                "Content-Type": "application/json",
+              },
+            }
           );
+
+          console.log(`Verify response status: ${verifyResponse.status}`);
+
+          // Handle non-JSON responses (like HTML error pages)
+          const contentType = verifyResponse.headers.get("content-type");
+          if (!contentType || !contentType.includes("application/json")) {
+            console.error("Server returned non-JSON response:", contentType);
+            throw new Error("Server error - please try again later");
+          }
 
           if (!verifyResponse.ok) {
             const errorData = await verifyResponse.json();
+            console.error("Verification failed:", errorData);
             throw new Error(errorData.detail || "Invalid invitation code");
           }
 
+          const verifyData = await verifyResponse.json();
+          console.log("Verification successful:", verifyData);
+
           // If valid, submit the code to complete registration
-          const response = await fetch("/api/v1/auth/verify-invitation", {
+          console.log("Submitting invitation for registration...");
+
+          const submitResponse = await fetch("/api/v1/auth/verify-invitation", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${this.token}`,
             },
             body: JSON.stringify({
-              code: this.code,
+              code: cleanCode,
             }),
           });
 
-          if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.detail || "Failed to process invitation");
+          console.log(`Submit response status: ${submitResponse.status}`);
+
+          // Handle non-JSON responses for submission too
+          const submitContentType = submitResponse.headers.get("content-type");
+          if (
+            !submitContentType ||
+            !submitContentType.includes("application/json")
+          ) {
+            console.error(
+              "Server returned non-JSON response for submission:",
+              submitContentType
+            );
+            throw new Error(
+              "Server error during registration - please try again later"
+            );
           }
 
-          const data = await response.json();
+          if (!submitResponse.ok) {
+            const errorData = await submitResponse.json();
+            console.error("Registration failed:", errorData);
+            throw new Error(
+              errorData.detail || "Failed to complete registration"
+            );
+          }
+
+          const data = await submitResponse.json();
+          console.log("Registration successful:", data);
+
           this.success =
             "Registration completed successfully! Redirecting to the app...";
 
           // Store the new token and redirect to app
-          localStorage.setItem("token", data.access_token);
+          if (data.access_token) {
+            localStorage.setItem("token", data.access_token);
 
-          // Redirect after a short delay
-          setTimeout(() => {
-            window.location.href = `/app?token=${data.access_token}`;
-          }, 1500);
+            // Redirect after a short delay
+            setTimeout(() => {
+              window.location.href = `/app?token=${data.access_token}`;
+            }, 1500);
+          } else {
+            throw new Error("No access token received");
+          }
         } catch (error) {
+          console.error("Error during invitation verification:", error);
           this.error = error.message || "An unexpected error occurred";
         } finally {
           this.loading = false;

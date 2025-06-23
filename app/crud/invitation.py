@@ -8,6 +8,9 @@ from datetime import datetime, timedelta
 from app.models.invitation import Invitation
 from app.models.user import User
 from app.schemas.invitation import InvitationCreate, InvitationUpdate
+import logging
+
+logger = logging.getLogger(__name__)
 
 async def get_invitation(db: AsyncSession, invitation_id: UUID) -> Optional[Invitation]:
     """
@@ -133,22 +136,44 @@ async def delete_invitation(db: AsyncSession, *, invitation_id: UUID) -> Optiona
 
 async def verify_invitation_code(db: AsyncSession, code: str) -> Optional[Invitation]:
     """
-    Verify an invitation code and check if it's valid.
+    Verify an invitation code and check if it's valid with improved error handling.
     """
-    invitation = await get_invitation_by_code(db, code)
-    
-    if not invitation:
+    try:
+        logger.info(f"Searching for invitation with code: {code}")
+        
+        # First, try to find the invitation
+        result = await db.execute(
+            select(Invitation)
+            .where(Invitation.code == code)
+            .options(
+                joinedload(Invitation.inviter),
+                joinedload(Invitation.group)
+            )
+        )
+        invitation = result.scalars().first()
+        
+        if not invitation:
+            logger.warning(f"No invitation found with code: {code}")
+            return None
+        
+        logger.info(f"Found invitation {invitation.id} with code: {code}")
+        
+        # Check if the invitation is already used
+        if invitation.is_used:
+            logger.warning(f"Invitation {invitation.id} is already used")
+            return None
+        
+        # Check if the invitation is expired
+        if invitation.expires_at and invitation.expires_at < datetime.utcnow():
+            logger.warning(f"Invitation {invitation.id} has expired")
+            return None
+        
+        logger.info(f"Invitation {invitation.id} is valid")
+        return invitation
+        
+    except Exception as e:
+        logger.error(f"Database error while verifying invitation code {code}: {e}", exc_info=True)
         return None
-    
-    # Check if the invitation is already used
-    if invitation.is_used:
-        return None
-    
-    # Check if the invitation is expired
-    if invitation.expires_at and invitation.expires_at < datetime.utcnow():
-        return None
-    
-    return invitation
 
 async def use_invitation(
     db: AsyncSession, invitation_id: UUID, invitee_id: UUID

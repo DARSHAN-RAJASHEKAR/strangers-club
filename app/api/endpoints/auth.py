@@ -1,4 +1,5 @@
 # app/api/endpoints/auth.py
+import logging
 import os
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from fastapi.responses import RedirectResponse
@@ -24,6 +25,8 @@ router = APIRouter()
 
 # In-memory state storage for OAuth (production should use Redis)
 oauth_states = {}
+
+logger = logging.getLogger(__name__)
 
 def generate_state():
     """Generate a cryptographically secure state parameter"""
@@ -208,54 +211,111 @@ async def verify_invitation(
     """
     Verify an invitation code and complete user registration.
     """
-    # Get token from Authorization header
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
-    token = auth_header.split(" ")[1]
-    
-    # Validate token and get user
     try:
-        user = await get_current_user(token=token, db=db)
-    except Exception:
+        # Get token from Authorization header
+        auth_header = request.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Bearer "):
+            logger.warning("Missing or invalid Authorization header")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        token = auth_header.split(" ")[1]
+        
+        # Validate token and get user
+        try:
+            user = await get_current_user(token=token, db=db)
+            logger.info(f"User {user.email} attempting to verify invitation")
+        except Exception as e:
+            logger.error(f"Token validation failed: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # Validate invitation code input
+        if not invitation_in.code or len(invitation_in.code.strip()) == 0:
+            logger.warning("Empty invitation code provided")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invitation code is required"
+            )
+        
+        # Clean and validate the code
+        clean_code = invitation_in.code.strip().upper()
+        logger.info(f"Verifying invitation code: {clean_code}")
+        
+        # Verify invitation code
+        invitation = await verify_invitation_code(db, clean_code)
+        if not invitation:
+            logger.warning(f"Invalid invitation code: {clean_code}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired invitation code"
+            )
+        
+        logger.info(f"Valid invitation found: {invitation.id}")
+        
+        # Use the invitation
+        try:
+            invitation = await use_invitation(db, invitation.id, user.id)
+            logger.info(f"Invitation {invitation.id} marked as used by user {user.id}")
+        except Exception as e:
+            logger.error(f"Failed to mark invitation as used: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to process invitation"
+            )
+        
+        # Add user to the specific group
+        try:
+            await add_user_to_group(db, invitation.group_id, user.id)
+            logger.info(f"User {user.id} added to group {invitation.group_id}")
+        except Exception as e:
+            logger.error(f"Failed to add user to group: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to join group"
+            )
+        
+        # Add user to ALL general groups
+        try:
+            await add_new_user_to_general_groups(db, user.id)
+            logger.info(f"User {user.id} added to general groups")
+        except Exception as e:
+            logger.error(f"Failed to add user to general groups: {e}")
+            # This is not critical, so we'll log but not fail
+        
+        # Create a new access token for the fully registered user
+        try:
+            access_token = create_access_token(
+                data={"sub": user.email},
+                expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+            )
+            logger.info(f"New access token created for user {user.email}")
+        except Exception as e:
+            logger.error(f"Failed to create access token: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create access token"
+            )
+        
+        return {
+            "access_token": access_token,
+            "token_type": "bearer"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in verify_invitation: {e}", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
-            headers={"WWW-Authenticate": "Bearer"},
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An internal error occurred"
         )
-    
-    # Verify invitation code
-    invitation = await verify_invitation_code(db, invitation_in.code)
-    if not invitation:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired invitation code"
-        )
-    
-    # Use the invitation
-    invitation = await use_invitation(db, invitation.id, user.id)
-    
-    # Add user to the specific group
-    await add_user_to_group(db, invitation.group_id, user.id)
-    
-    # Add user to ALL general groups
-    await add_new_user_to_general_groups(db, user.id)
-    
-    # Create a new access token for the fully registered user
-    access_token = create_access_token(
-        data={"sub": user.email},
-        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    )
-    
-    return {
-        "access_token": access_token,
-        "token_type": "bearer"
-    }
 
 @router.post("/join-group", response_model=Dict[str, str])
 async def join_group_with_code(

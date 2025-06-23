@@ -46,21 +46,38 @@ async def create_invitation(
 ):
     """
     Create a new invitation for a group.
+    Special handling for platform invitations - any user can create invitations for general groups.
+    Only group owners can create invitations for Timeleft meet-up groups.
     """
     try:
-        # Check if user is a member of the group
+        # Check if the group exists
         group = await crud_group.get_group(db, invitation_in.group_id)
         if not group:
             raise HTTPException(status_code=404, detail="Group not found")
         
-        # Check if user is the owner of the group
-        if group.owner_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Only the group owner can create invitations")
+        # Special case: For general groups (platform invitations), any registered user can create invitations
+        if group.is_general:
+            logger.info(f"User {current_user.id} creating platform invitation for general group {group.id}")
+            invitation = await crud_invitation.create_invitation(
+                db, invitation_in, inviter_id=current_user.id
+            )
+            return invitation
         
+        # For Timeleft meet-up groups, only the group owner can create invitations
+        if group.owner_id != current_user.id:
+            raise HTTPException(
+                status_code=403, 
+                detail="Only the group owner can create invitations for Timeleft meet-up groups"
+            )
+        
+        # Create the invitation
         invitation = await crud_invitation.create_invitation(
             db, invitation_in, inviter_id=current_user.id
         )
+        
+        logger.info(f"User {current_user.id} created invitation {invitation.id} for group {invitation_in.group_id}")
         return invitation
+        
     except HTTPException:
         raise
     except Exception as e:
@@ -82,19 +99,31 @@ async def read_group_invitations(
     Get all invitations for a specific group.
     """
     try:
-        # Check if user is a member of the group
+        # Check if the group exists
         group = await crud_group.get_group(db, group_id)
         if not group:
             raise HTTPException(status_code=404, detail="Group not found")
         
-        # Check if user is the owner of the group
-        if group.owner_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Only the group owner can view all invitations")
+        # For general groups, any user can view invitations
+        if group.is_general:
+            invitations = await crud_invitation.get_invitations_by_group(
+                db, group_id, skip=skip, limit=limit
+            )
+            return invitations
         
+        # For Timeleft meet-up groups, only the group owner can view all invitations
+        if group.owner_id != current_user.id:
+            raise HTTPException(
+                status_code=403, 
+                detail="Only the group owner can view all invitations for this group"
+            )
+        
+        # Get invitations for the group
         invitations = await crud_invitation.get_invitations_by_group(
             db, group_id, skip=skip, limit=limit
         )
         return invitations
+        
     except HTTPException:
         raise
     except Exception as e:
@@ -146,9 +175,16 @@ async def delete_invitation(
         if not invitation:
             raise HTTPException(status_code=404, detail="Invitation not found")
         
-        # Check if user is the inviter
-        if invitation.inviter_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Only the creator can delete the invitation")
+        # Check if user is the inviter or the group owner
+        group = await crud_group.get_group(db, invitation.group_id)
+        is_inviter = invitation.inviter_id == current_user.id
+        is_group_owner = group and group.owner_id == current_user.id
+        
+        if not (is_inviter or is_group_owner):
+            raise HTTPException(
+                status_code=403, 
+                detail="Only the invitation creator or group owner can delete invitations"
+            )
         
         # Check if invitation is already used
         if invitation.is_used:
@@ -156,6 +192,7 @@ async def delete_invitation(
         
         invitation = await crud_invitation.delete_invitation(db, invitation_id=invitation_id)
         return invitation
+        
     except HTTPException:
         raise
     except Exception as e:
@@ -221,22 +258,40 @@ async def generate_new_invitation_code(
 ):
     """
     Generate a new invitation code for a group.
+    For general groups (platform invitations), any user can generate codes.
+    For Timeleft meet-up groups, only group owners can generate codes.
     """
     try:
-        # Check if user is a member of the group
+        # Check if the group exists
         group = await crud_group.get_group(db, group_id)
         if not group:
             raise HTTPException(status_code=404, detail="Group not found")
         
-        # Check if user is the owner of the group
-        if group.owner_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Only the group owner can generate invitation codes")
+        # Special case: For general groups (platform invitations), any registered user can generate codes
+        if group.is_general:
+            logger.info(f"User {current_user.id} generating platform invitation code for general group {group_id}")
+            invitation_in = InvitationCreate(group_id=group_id)
+            invitation = await crud_invitation.create_invitation(
+                db, invitation_in, inviter_id=current_user.id
+            )
+            return invitation
         
+        # For Timeleft meet-up groups, only the group owner can generate invitation codes
+        if group.owner_id != current_user.id:
+            raise HTTPException(
+                status_code=403, 
+                detail="Only the group owner can generate invitation codes for Timeleft meet-up groups"
+            )
+        
+        # Create the invitation
         invitation_in = InvitationCreate(group_id=group_id)
         invitation = await crud_invitation.create_invitation(
             db, invitation_in, inviter_id=current_user.id
         )
+        
+        logger.info(f"User {current_user.id} generated new invitation code for group {group_id}")
         return invitation
+        
     except HTTPException:
         raise
     except Exception as e:

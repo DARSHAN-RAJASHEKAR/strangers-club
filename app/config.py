@@ -11,11 +11,14 @@ def get_database_url() -> str:
     db_url = os.getenv("DATABASE_URL")
     
     if db_url:
-        # Convert postgres:// to postgresql+asyncpg:// for async SQLAlchemy
+        # Handle different PostgreSQL URL formats
         if db_url.startswith("postgres://"):
+            # Convert postgres:// to postgresql+asyncpg://
             db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
-        elif db_url.startswith("postgresql://"):
+        elif db_url.startswith("postgresql://") and "+asyncpg" not in db_url:
+            # Add asyncpg driver to postgresql://
             db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        
         return db_url
     
     # Fallback for development
@@ -90,19 +93,3 @@ class Settings(BaseSettings):
         case_sensitive = True
 
 settings = Settings()
-
-# Debug output
-if os.getenv("RENDER"):
-    print(f"🚀 Running on Render: {settings.FRONTEND_URL}")
-    print(f"📊 Database: {settings.DATABASE_URL.split('@')[0] if '@' in settings.DATABASE_URL else 'SQLite'}")
-    
-    if "sqlite" in settings.DATABASE_URL:
-        print("⚠️  WARNING: Using SQLite - data will be lost on restart!")
-    else:
-        print("✅ Using PostgreSQL with async driver")
-        
-    print(f"🔗 OAuth Redirect: {settings.GOOGLE_REDIRECT_URI}")
-else:
-    print("💻 Development mode")
-    print(f"📊 Database: SQLite")
-    print(f"🔗 OAuth Redirect: {settings.GOOGLE_REDIRECT_URI}")

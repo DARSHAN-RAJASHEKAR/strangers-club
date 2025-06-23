@@ -5,17 +5,20 @@ from pydantic_settings import BaseSettings
 from pydantic import validator
 
 def get_database_url() -> str:
-    """Get database URL with proper async driver - FORCED asyncpg"""
+    """Get database URL with proper async driver"""
     db_url = os.getenv("DATABASE_URL")
     
     if db_url:
-        # Force asyncpg driver for any PostgreSQL URL
-        if "postgresql" in db_url or "postgres" in db_url:
-            # Remove any existing driver specification
-            if "://" in db_url:
-                protocol, rest = db_url.split("://", 1)
-                # Force asyncpg driver
-                return f"postgresql+asyncpg://{rest}"
+        # Ensure we use asyncpg for PostgreSQL
+        if "postgresql://" in db_url or "postgres://" in db_url:
+            # Replace postgres:// with postgresql:// if needed
+            db_url = db_url.replace("postgres://", "postgresql://")
+            # Add asyncpg driver if not present
+            if "+asyncpg" not in db_url:
+                db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
+            return db_url
+        elif "sqlite" in db_url and "+aiosqlite" not in db_url:
+            return db_url.replace("sqlite://", "sqlite+aiosqlite://")
         return db_url
     
     # Fallback for development

@@ -3,7 +3,7 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
 from typing import Optional, List
 from uuid import UUID
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.models.invitation import Invitation
 from app.models.user import User
@@ -91,7 +91,7 @@ async def create_invitation(
         code = Invitation.generate_code(inviter.username)
     
     # Set expiration date (e.g., 7 days from now)
-    expires_at = datetime.utcnow() + timedelta(days=7)
+    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
     
     db_invitation = Invitation(
         code=code,
@@ -164,7 +164,7 @@ async def verify_invitation_code(db: AsyncSession, code: str) -> Optional[Invita
             return None
         
         # Check if the invitation is expired
-        if invitation.expires_at and invitation.expires_at < datetime.utcnow():
+        if invitation.expires_at and invitation.expires_at < datetime.now(timezone.utc):
             logger.warning(f"Invitation {invitation.id} has expired")
             return None
         

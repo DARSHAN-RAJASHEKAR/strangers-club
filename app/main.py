@@ -11,6 +11,8 @@ import uvicorn
 import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+import subprocess
+import sys
 
 from app.api.router import api_router
 from app.config import settings
@@ -53,12 +55,30 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # Include API router
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
+def run_alembic_upgrade():
+    """Run alembic upgrade head to ensure database is up to date"""
+    try:
+        result = subprocess.run([
+            sys.executable, "-m", "alembic", "upgrade", "head"
+        ], capture_output=True, text=True, cwd=os.getcwd())
+        
+        if result.returncode != 0:
+            print(f"Alembic upgrade failed: {result.stderr}")
+            raise Exception(f"Database migration failed: {result.stderr}")
+        else:
+            print("Database migrations applied successfully")
+            print(result.stdout)
+    except Exception as e:
+        print(f"Error running migrations: {e}")
+        raise
+
 # Database initialization
 @app.on_event("startup")
 async def init_db():
-    async with engine.begin() as conn:
-        # Create tables if they don't exist
-        await conn.run_sync(Base.metadata.create_all)
+    # Run database migrations first
+    if settings.is_production:
+        print("Running database migrations...")
+        run_alembic_upgrade()
     
     async with AsyncSession(engine) as session:
         # --- ROBUST ADMIN CREATION ---

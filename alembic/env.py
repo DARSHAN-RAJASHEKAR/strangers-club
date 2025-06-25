@@ -10,11 +10,21 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import your models here
 from app.db.base import Base
-from app.models.user import User
-from app.models.group import Group
-from app.models.channel import Channel
-from app.models.invitation import Invitation
-from app.models.message import Message
+from app.db.types import GUID  # Import GUID type from types module
+
+# Import ALL your models explicitly
+from app.models.user import User  # noqa: F401
+from app.models.group import Group  # noqa: F401
+from app.models.channel import Channel  # noqa: F401
+from app.models.invitation import Invitation  # noqa: F401
+from app.models.message import Message  # noqa: F401
+from app.models.phone_verification import PhoneVerification  # noqa: F401
+
+# This tells the linter these imports are intentional
+__all__ = [
+    "User", "Group", "Channel", "Invitation", "Message", "PhoneVerification"
+]
+
 from app.config import settings
 
 # this is the Alembic Config object, which provides
@@ -22,7 +32,14 @@ from app.config import settings
 config = context.config
 
 # Override the SQLAlchemy URL with the one from settings
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL.replace("+aiosqlite", ""))
+# Remove async driver for alembic (it doesn't support async)
+database_url = settings.DATABASE_URL
+if "+asyncpg" in database_url:
+    database_url = database_url.replace("+asyncpg", "")
+elif "+aiosqlite" in database_url:
+    database_url = database_url.replace("+aiosqlite", "")
+
+config.set_main_option("sqlalchemy.url", database_url)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

@@ -1,0 +1,388 @@
+{% extends "base.html" %} {% block title %}Verify Phone - Strangers Meet{%
+endblock %} {% block nav_links %}
+<li><a href="/login" class="hover:text-indigo-200">Login</a></li>
+{% endblock %} {% block content %}
+<div
+  class="flex flex-col items-center justify-center mt-10"
+  x-data="phoneVerification()"
+  x-init="init()"
+>
+  <div class="text-center mb-10">
+    <h1 class="text-3xl font-bold text-indigo-700 mb-4">Verify Your Phone</h1>
+    <p class="text-gray-600 max-w-2xl mx-auto">
+      To complete your registration, please verify your WhatsApp number. We'll
+      send you a verification code.
+    </p>
+  </div>
+
+  <div class="bg-white rounded-lg shadow-lg p-8 max-w-md w-full">
+    <div class="flex flex-col space-y-6">
+      <h2 class="text-2xl font-semibold text-center">
+        Enter Your Phone Number
+      </h2>
+
+      <div
+        x-show="error"
+        class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative"
+        role="alert"
+      >
+        <span class="block sm:inline" x-text="error"></span>
+      </div>
+
+      <div
+        x-show="success"
+        class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative"
+        role="alert"
+      >
+        <span class="block sm:inline" x-text="success"></span>
+      </div>
+
+      <!-- Phone input form (shown first) -->
+      <form
+        @submit.prevent="requestVerification"
+        class="space-y-4"
+        x-show="!codeRequested"
+      >
+        <div class="space-y-2">
+          <label
+            for="phone_number"
+            class="block text-sm font-medium text-gray-700"
+            >WhatsApp Number</label
+          >
+          <div class="flex">
+            <span
+              class="inline-flex items-center px-3 text-gray-500 bg-gray-100 border border-r-0 border-gray-300 rounded-l-md"
+            >
+              +91
+            </span>
+            <input
+              type="tel"
+              id="phone_number"
+              x-model="phoneNumber"
+              class="mt-1 block w-full border border-gray-300 rounded-r-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+              placeholder="10-digit number"
+              pattern="[6-9][0-9]{9}"
+              maxlength="10"
+              required
+            />
+          </div>
+          <p class="mt-1 text-sm text-gray-500">
+            Enter your 10-digit Indian mobile number with WhatsApp
+          </p>
+        </div>
+
+        <div>
+          <button
+            type="submit"
+            class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            :disabled="sendingRequest"
+          >
+            <span x-show="!sendingRequest">Send Verification Code</span>
+            <span x-show="sendingRequest" class="flex items-center">
+              <svg
+                class="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                ></circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+              Sending...
+            </span>
+          </button>
+        </div>
+      </form>
+
+      <!-- Verification code form (shown after phone number submission) -->
+      <form
+        @submit.prevent="verifyCode"
+        class="space-y-4"
+        x-show="codeRequested"
+      >
+        <div class="space-y-2">
+          <label
+            for="verification_code"
+            class="block text-sm font-medium text-gray-700"
+            >Verification Code</label
+          >
+          <input
+            type="text"
+            id="verification_code"
+            x-model="verificationCode"
+            class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+            placeholder="6-digit code"
+            pattern="[0-9]{6}"
+            maxlength="6"
+            required
+          />
+          <p class="mt-1 text-sm text-gray-500">
+            Enter the 6-digit code sent to your WhatsApp
+          </p>
+        </div>
+
+        <div class="flex justify-between items-center">
+          <span class="text-sm text-gray-500" x-show="timeLeft > 0">
+            Code expires in
+            <span class="font-medium" x-text="formatTime(timeLeft)"></span>
+          </span>
+          <span class="text-sm text-red-600" x-show="timeLeft <= 0">
+            Code expired
+          </span>
+          <button
+            type="button"
+            @click="requestVerification()"
+            class="text-sm text-indigo-600 hover:text-indigo-500"
+            :disabled="timeLeft > 0 && timeLeft < expiresIn - 30"
+            :class="{'opacity-50 cursor-not-allowed': timeLeft > 0 && timeLeft < expiresIn - 30}"
+          >
+            Resend Code
+          </button>
+        </div>
+
+        <div>
+          <button
+            type="submit"
+            class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            :disabled="verifyingCode || timeLeft <= 0"
+            :class="{'opacity-50 cursor-not-allowed': timeLeft <= 0}"
+          >
+            <span x-show="!verifyingCode">Verify Code</span>
+            <span x-show="verifyingCode" class="flex items-center">
+              <svg
+                class="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                ></circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+              Verifying...
+            </span>
+          </button>
+        </div>
+
+        <button
+          type="button"
+          @click="resetForm()"
+          class="w-full text-center text-sm text-gray-600 hover:text-gray-900 mt-4"
+        >
+          Change Phone Number
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="mt-8 text-center">
+    <p class="text-gray-600">
+      We only use your phone number for verification and never share it with
+      third parties.
+    </p>
+  </div>
+</div>
+
+<script>
+  function phoneVerification() {
+    return {
+      token: "{{ token }}" || localStorage.getItem("token"),
+      phoneNumber: "",
+      verificationCode: "",
+      codeRequested: false,
+      sendingRequest: false,
+      verifyingCode: false,
+      error: "",
+      success: "",
+      timeLeft: 0,
+      expiresIn: 0,
+      timer: null,
+
+      init() {
+        if (!this.token) {
+          window.location.href = "/login";
+          return;
+        }
+
+        localStorage.setItem("token", this.token);
+
+        // Check if user is already verified
+        this.checkVerificationStatus();
+      },
+
+      async checkVerificationStatus() {
+        try {
+          const response = await fetch("/api/v1/phone/verification-status", {
+            headers: {
+              Authorization: `Bearer ${this.token}`,
+            },
+          });
+
+          if (!response.ok) {
+            console.error("Failed to fetch verification status");
+            return;
+          }
+
+          const data = await response.json();
+
+          if (data.is_verified) {
+            // If already verified, redirect to app
+            window.location.href = `/app?token=${this.token}`;
+          }
+        } catch (error) {
+          console.error("Error checking verification status:", error);
+        }
+      },
+
+      async requestVerification() {
+        this.error = "";
+        this.success = "";
+        this.sendingRequest = true;
+
+        try {
+          // Validate phone number format (Indian mobile)
+          const phonePattern = /^[6-9]\d{9}$/;
+          if (!phonePattern.test(this.phoneNumber)) {
+            throw new Error(
+              "Please enter a valid 10-digit Indian mobile number starting with 6-9"
+            );
+          }
+
+          const response = await fetch("/api/v1/phone/request-verification", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${this.token}`,
+            },
+            body: JSON.stringify({
+              phone_number: this.phoneNumber,
+            }),
+          });
+
+          const data = await response.json();
+
+          if (!response.ok) {
+            throw new Error(data.detail || "Failed to send verification code");
+          }
+
+          // Success - show verification code input
+          this.codeRequested = true;
+          this.success = data.message;
+          this.expiresIn = data.expires_in;
+          this.timeLeft = data.expires_in;
+
+          // Start countdown timer
+          this.startTimer();
+        } catch (error) {
+          this.error = error.message || "An unexpected error occurred";
+          console.error("Error requesting verification:", error);
+        } finally {
+          this.sendingRequest = false;
+        }
+      },
+
+      async verifyCode() {
+        this.error = "";
+        this.success = "";
+        this.verifyingCode = true;
+
+        try {
+          // Validate code format
+          if (!/^\d{6}$/.test(this.verificationCode)) {
+            throw new Error("Please enter a valid 6-digit verification code");
+          }
+
+          const response = await fetch("/api/v1/phone/verify-code", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${this.token}`,
+            },
+            body: JSON.stringify({
+              phone_number: this.phoneNumber,
+              verification_code: this.verificationCode,
+            }),
+          });
+
+          const data = await response.json();
+
+          if (!response.ok) {
+            throw new Error(data.detail || "Failed to verify code");
+          }
+
+          if (!data.success) {
+            throw new Error(data.message || "Invalid verification code");
+          }
+
+          // Update success message
+          this.success = data.message;
+
+          // If verification successful and we have a new token
+          if (data.token) {
+            // Update token in localStorage
+            localStorage.setItem("token", data.token);
+            this.token = data.token;
+
+            // Show success message for 2 seconds before redirecting
+            setTimeout(() => {
+              window.location.href = `/app?token=${data.token}`;
+            }, 2000);
+          }
+        } catch (error) {
+          this.error = error.message || "An unexpected error occurred";
+          console.error("Error verifying code:", error);
+        } finally {
+          this.verifyingCode = false;
+        }
+      },
+
+      startTimer() {
+        // Clear any existing timer
+        if (this.timer) clearInterval(this.timer);
+
+        // Start a new countdown timer
+        this.timer = setInterval(() => {
+          this.timeLeft--;
+          if (this.timeLeft <= 0) {
+            clearInterval(this.timer);
+          }
+        }, 1000);
+      },
+
+      formatTime(seconds) {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins}:${secs.toString().padStart(2, "0")}`;
+      },
+
+      resetForm() {
+        // Allow user to change phone number
+        this.codeRequested = false;
+        this.verificationCode = "";
+        if (this.timer) clearInterval(this.timer);
+      },
+    };
+  }
+</script>
+{% endblock %}

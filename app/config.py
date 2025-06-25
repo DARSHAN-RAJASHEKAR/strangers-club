@@ -49,6 +49,12 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
     GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
     GOOGLE_REDIRECT_URI: str = get_google_redirect_uri()
+
+    # WhatsApp Gupshup settings
+    GUPSHUP_API_KEY: str = os.getenv("GUPSHUP_API_KEY", "")
+    GUPSHUP_SOURCE_NUMBER: str = os.getenv("GUPSHUP_SOURCE_NUMBER", "")
+    GUPSHUP_APP_NAME: str = os.getenv("GUPSHUP_APP_NAME", "")
+    GUPSHUP_TEMPLATE_ID: str = os.getenv("GUPSHUP_TEMPLATE_ID", "")
     
     # Database - FORCED asyncpg
     DATABASE_URL: str = get_database_url()

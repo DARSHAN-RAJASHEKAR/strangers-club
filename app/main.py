@@ -1,4 +1,3 @@
-# app/main.py
 import datetime
 import os
 from fastapi import FastAPI, Depends, HTTPException, Request
@@ -122,6 +121,12 @@ async def join_group_page(request: Request):
 async def app_page(request: Request):
     token = request.query_params.get("token", "")
     return templates.TemplateResponse("dashboard.html", {"request": request, "token": token})
+
+# Phone verification page
+@app.get("/verify-phone", response_class=HTMLResponse)
+async def verify_phone_page(request: Request):
+    token = request.query_params.get("token", "")
+    return templates.TemplateResponse("verify-phone.html", {"request": request, "token": token})
 
 # Health check endpoint
 @app.get("/health")

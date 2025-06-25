@@ -36,6 +36,10 @@ class User(Base):
     invitations_received = relationship("Invitation", foreign_keys="Invitation.invitee_id", back_populates="invitee")
     messages = relationship("Message", back_populates="author")
 
+    phone_number = Column(String, unique=True, index=True, nullable=True)
+    phone_verified = Column(Boolean, default=False)
+    phone_verifications = relationship("PhoneVerification", back_populates="user")
+
     @staticmethod
     def generate_username() -> str:
         """Generate a random username with 2 letters and 3 digits."""

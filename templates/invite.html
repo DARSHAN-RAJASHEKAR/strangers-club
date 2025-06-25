@@ -195,16 +195,26 @@ Meet{% endblock %} {% block content %}
           const data = await submitResponse.json();
           console.log("Registration successful:", data);
 
-          this.success =
-            "Registration completed successfully! Redirecting to the app...";
+          // Handle different registration scenarios
+          if (data.requires_phone_verification) {
+            this.success =
+              "Registration completed successfully! Redirecting to phone verification...";
+          } else {
+            this.success =
+              "Registration completed successfully! Redirecting to the app...";
+          }
 
-          // Store the new token and redirect to app
+          // Store the token
           if (data.access_token) {
             localStorage.setItem("token", data.access_token);
 
-            // Redirect after a short delay
+            // Redirect based on whether phone verification is needed
             setTimeout(() => {
-              window.location.href = `/app?token=${data.access_token}`;
+              if (data.requires_phone_verification) {
+                window.location.href = `/verify-phone?token=${data.access_token}`;
+              } else {
+                window.location.href = `/app?token=${data.access_token}`;
+              }
             }, 1500);
           } else {
             throw new Error("No access token received");

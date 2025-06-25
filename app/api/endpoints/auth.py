@@ -129,7 +129,7 @@ async def google_callback(
             "email": user_info.get("email")
         })
         
-        # Check if the user needs to complete registration
+        # Check if the user needs to complete registration (invitation verification)
         if not user.is_superuser and not user.invitations_received:
             temp_token = create_access_token(
                 data={"sub": user.email},
@@ -144,6 +144,13 @@ async def google_callback(
             expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         )
         
+        # Check if user needs phone verification
+        if not user.phone_verified:
+            logger.info(f"User {user.email} needs phone verification")
+            redirect_url = f"{settings.FRONTEND_URL}/verify-phone?token={access_token}"
+            return RedirectResponse(url=redirect_url)
+        
+        # If already verified, go to app
         redirect_url = f"{settings.FRONTEND_URL}/app?token={access_token}"
         return RedirectResponse(url=redirect_url)
         
@@ -303,9 +310,19 @@ async def verify_invitation(
                 detail="Failed to create access token"
             )
         
+        # Always set requires_phone_verification to True if not already verified
+        requires_phone_verification = not user.phone_verified
+        
+        # Log whether phone verification is required
+        if requires_phone_verification:
+            logger.info(f"User {user.email} needs phone verification after invitation verification")
+        else:
+            logger.info(f"User {user.email} already has verified phone, skipping verification")
+        
         return {
             "access_token": access_token,
-            "token_type": "bearer"
+            "token_type": "bearer",
+            "requires_phone_verification": requires_phone_verification
         }
         
     except HTTPException:

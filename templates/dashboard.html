@@ -46,6 +46,14 @@
 
         try {
           await this.fetchCurrentUser();
+
+          // Check if user needs phone verification
+          if (!this.currentUser.phone_verified) {
+            console.log("User needs phone verification, redirecting...");
+            window.location.href = `/verify-phone?token=${this.token}`;
+            return;
+          }
+
           await this.fetchGroups();
           this.loadLocalMessages(); // Load cached messages
 

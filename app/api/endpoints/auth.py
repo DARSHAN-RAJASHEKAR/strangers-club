@@ -130,7 +130,7 @@ async def google_callback(
         })
         
         # Check if the user needs to complete registration (invitation verification)
-        if not user.is_superuser and not user.invitations_received:
+        if not user.is_superuser and len(user.invitations_received) == 0:
             temp_token = create_access_token(
                 data={"sub": user.email},
                 expires_delta=timedelta(minutes=30)

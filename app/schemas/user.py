@@ -33,6 +33,8 @@ class UserInDBBase(UserBase):
 # Properties to return via API
 class User(UserInDBBase):
     is_superuser: bool = False
+    phone_number: Optional[str] = None
+    phone_verified: bool = False
 
 # Additional properties stored in DB
 class UserInDB(UserInDBBase):

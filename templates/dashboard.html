@@ -126,19 +126,20 @@
           console.error("Failed to fetch messages:", response.statusText);
           return;
         }
-        this.messages = await response.json();
+        const serverMessages = await response.json();
 
-        // Mark all server messages as delivered
-        this.messages.forEach((msg) => {
-          if (!msg.status) msg.status = "delivered";
-        });
+        // IMPORTANT: Set isMine property for each message based on current user
+        this.messages = serverMessages.map((message) => ({
+          ...message,
+          isMine: message.author_id === this.currentUser.id, // Fix: Calculate isMine property
+          status: message.status || "delivered", // Ensure status exists
+        }));
 
         this.saveLocalMessages(); // Cache messages locally
         this.$nextTick(() => {
           this.scrollToBottom();
         });
       },
-
       setupWebSocket(channelId) {
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
         const host = window.location.host;
@@ -226,10 +227,11 @@
           tempId: messageData.tempId,
           content: messageData.content,
           author: messageData.author,
+          author_id: messageData.author?.id || messageData.author_id, // Ensure author_id exists
           channel_id: messageData.channel_id,
           created_at: messageData.created_at,
           status: status,
-          isMine: messageData.author?.id === this.currentUser?.id,
+          isMine: messageData.author?.id === this.currentUser?.id, // Keep this logic
         };
 
         this.messages.push(message);
@@ -274,6 +276,7 @@
             id: this.currentUser.id,
             username: this.currentUser.username,
           },
+          author_id: this.currentUser.id, // Add this line
           channel_id: this.selectedChannel.id,
           created_at: new Date().toISOString(),
           status: "sent", // Start with sent status
@@ -341,7 +344,13 @@
         if (!this.selectedChannel) return;
         const key = `messages_${this.selectedChannel.id}`;
         try {
-          localStorage.setItem(key, JSON.stringify(this.messages));
+          // Ensure all messages have proper author_id when saving
+          const messagesToSave = this.messages.map((message) => ({
+            ...message,
+            author_id: message.author_id || message.author?.id,
+            isMine: message.author_id === this.currentUser.id,
+          }));
+          localStorage.setItem(key, JSON.stringify(messagesToSave));
         } catch (error) {
           console.error("Failed to save messages locally:", error);
         }
@@ -353,7 +362,13 @@
         try {
           const cached = localStorage.getItem(key);
           if (cached) {
-            this.messages = JSON.parse(cached);
+            const cachedMessages = JSON.parse(cached);
+            // Recalculate isMine for cached messages and ensure author_id
+            this.messages = cachedMessages.map((message) => ({
+              ...message,
+              author_id: message.author_id || message.author?.id,
+              isMine: message.author_id === this.currentUser.id,
+            }));
           }
         } catch (error) {
           console.error("Failed to load cached messages:", error);
@@ -912,16 +927,16 @@
           >
             <div
               class="message-row"
-              :class="message.isMine ? 'mine' : 'others'"
+              :class="(message.author_id === currentUser.id) ? 'mine' : 'others'"
             >
               <div
                 class="message-content"
-                :class="message.isMine ? 'mine' : 'others'"
+                :class="(message.author_id === currentUser.id) ? 'mine' : 'others'"
               >
                 <!-- Avatar -->
                 <div
                   class="avatar-initial"
-                  :class="message.isMine ? 'avatar-mine' : 'avatar-others'"
+                  :class="(message.author_id === currentUser.id) ? 'avatar-mine' : 'avatar-others'"
                 >
                   <span
                     x-text="message.author && message.author.username ? message.author.username.charAt(0) : 'U'"
@@ -931,10 +946,13 @@
                 <!-- Message bubble and metadata -->
                 <div
                   class="flex flex-col"
-                  :class="message.isMine ? 'items-end' : 'items-start'"
+                  :class="(message.author_id === currentUser.id) ? 'items-end' : 'items-start'"
                 >
                   <!-- Username and time (for others only) -->
-                  <div x-show="!message.isMine" class="username-time">
+                  <div
+                    x-show="(message.author_id !== currentUser.id)"
+                    class="username-time"
+                  >
                     <span
                       class="font-medium"
                       x-text="message.author && message.author.username ? message.author.username : 'Unknown User'"
@@ -948,13 +966,16 @@
                   <!-- Message bubble -->
                   <div
                     class="message-bubble"
-                    :class="message.isMine ? 'mine' : 'others'"
+                    :class="(message.author_id === currentUser.id) ? 'mine' : 'others'"
                   >
                     <p x-text="message.content"></p>
                   </div>
 
                   <!-- Time and status (for own messages only) -->
-                  <div x-show="message.isMine" class="message-meta mine">
+                  <div
+                    x-show="(message.author_id === currentUser.id)"
+                    class="message-meta mine"
+                  >
                     <span
                       x-text="new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })"
                     ></span>

@@ -132,7 +132,6 @@
         this.messages = serverMessages.map((message) => ({
           ...message,
           isMine: message.author_id === this.currentUser.id, // Fix: Calculate isMine property
-          status: message.status || "delivered", // Ensure status exists
         }));
 
         this.saveLocalMessages(); // Cache messages locally
@@ -167,8 +166,6 @@
           console.log("❌ Disconnected from real-time chat");
           this.isConnected = false;
 
-          // No status changes needed - messages stay as they are
-
           // Auto-reconnect
           if (event.code !== 1000 && this.selectedChannel) {
             setTimeout(() => {
@@ -193,22 +190,12 @@
 
           case "new_message":
             // Incoming message from others
-            this.addMessage(data, "delivered");
+            this.addMessage(data);
             break;
 
           case "message_sent":
             // Confirmation our message was sent
-            this.updateMessageStatus(data.tempId || data.id, "sent", data);
-            break;
-
-          case "message_delivered":
-            // Message was delivered to recipient
-            this.updateMessageStatus(data.id, "delivered");
-            break;
-
-          case "message_read":
-            // Message was read by recipient
-            this.updateMessageStatus(data.id, "read");
+            this.updateMessageId(data.tempId || data.id, data);
             break;
 
           case "typing":
@@ -221,7 +208,7 @@
         }
       },
 
-      addMessage(messageData, status = "delivered") {
+      addMessage(messageData) {
         const message = {
           id: messageData.id,
           tempId: messageData.tempId,
@@ -230,7 +217,6 @@
           author_id: messageData.author?.id || messageData.author_id, // Ensure author_id exists
           channel_id: messageData.channel_id,
           created_at: messageData.created_at,
-          status: status,
           isMine: messageData.author?.id === this.currentUser?.id, // Keep this logic
         };
 
@@ -241,13 +227,12 @@
         });
       },
 
-      updateMessageStatus(messageId, status, newData = null) {
+      updateMessageId(messageId, newData) {
         const message = this.messages.find(
           (m) => m.id === messageId || m.tempId === messageId
         );
 
         if (message) {
-          message.status = status;
           if (newData) {
             message.id = newData.id;
             message.created_at = newData.created_at;
@@ -279,7 +264,6 @@
           author_id: this.currentUser.id, // Add this line
           channel_id: this.selectedChannel.id,
           created_at: new Date().toISOString(),
-          status: "sent", // Start with sent status
           isMine: true,
         };
 
@@ -305,12 +289,10 @@
           } catch (error) {
             console.error("Failed to send via WebSocket:", error);
             this.queueMessage(messageToSend);
-            // Keep as 'sent' - no visual change for user
           }
         } else {
           // Queue for later
           this.queueMessage(messageToSend);
-          // Keep as 'sent' - no visual change for user
         }
       },
 
@@ -330,8 +312,6 @@
         queue.forEach((message) => {
           try {
             this.socket.send(JSON.stringify(message));
-            // Update status to sent (clean transition)
-            this.updateMessageStatus(message.tempId, "sent");
           } catch (error) {
             console.error("Failed to send queued message:", error);
             this.messageQueue.push(message); // Re-queue on failure
@@ -372,32 +352,6 @@
           }
         } catch (error) {
           console.error("Failed to load cached messages:", error);
-        }
-      },
-
-      getMessageStatusIcon(status) {
-        switch (status) {
-          case "sent":
-            return "✓"; // Single tick
-          case "delivered":
-            return "✓✓"; // Double tick
-          case "read":
-            return "✓✓"; // Blue double tick (would be blue in CSS)
-          default:
-            return "";
-        }
-      },
-
-      getMessageStatusClass(status) {
-        switch (status) {
-          case "sent":
-            return "text-gray-500";
-          case "delivered":
-            return "text-gray-600";
-          case "read":
-            return "text-blue-500";
-          default:
-            return "text-gray-400";
         }
       },
 
@@ -958,7 +912,7 @@
                       x-text="message.author && message.author.username ? message.author.username : 'Unknown User'"
                     ></span>
                     <span
-                      class="ml-2"
+                      class="ml-2 text-gray-600"
                       x-text="new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })"
                     ></span>
                   </div>
@@ -971,18 +925,14 @@
                     <p x-text="message.content"></p>
                   </div>
 
-                  <!-- Time and status (for own messages only) -->
+                  <!-- Time (for own messages only) -->
                   <div
                     x-show="(message.author_id === currentUser.id)"
                     class="message-meta mine"
                   >
                     <span
+                      class="text-gray-600"
                       x-text="new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })"
-                    ></span>
-                    <span
-                      class="message-status"
-                      :class="getMessageStatusClass(message.status)"
-                      x-text="getMessageStatusIcon(message.status)"
                     ></span>
                   </div>
                 </div>
@@ -1181,6 +1131,4 @@
     </div>
   </div>
 </div>
-{% endblock %} {% block extra_js %}
-<!-- Additional JavaScript if needed -->
-{% endblock %}
+{% endblock %} {% block extra_js %} {% endblock %}

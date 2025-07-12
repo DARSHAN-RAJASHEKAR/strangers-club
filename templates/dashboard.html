@@ -894,10 +894,10 @@
           ></p>
         </div>
 
-        <!-- Messages area -->
+        <!-- Messages area with proper alignment -->
         <div
           id="messages-container"
-          class="flex-1 overflow-y-auto p-4 space-y-3"
+          class="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50"
         >
           <div
             x-show="messages.length === 0"
@@ -911,83 +911,84 @@
             :key="message.id || message.tempId"
           >
             <div
-              class="flex space-x-3"
-              :class="message.isMine ? 'justify-end' : ''"
+              class="message-row"
+              :class="message.isMine ? 'mine' : 'others'"
             >
-              <!-- Avatar for others -->
               <div
-                x-show="!message.isMine"
-                class="avatar-initial"
-                x-text="message.author && message.author.username ? message.author.username.charAt(0) : 'U'"
-              ></div>
-
-              <div
-                class="flex-1 max-w-xs lg:max-w-md"
-                :class="message.isMine ? 'text-right' : ''"
+                class="message-content"
+                :class="message.isMine ? 'mine' : 'others'"
               >
-                <!-- Username and time for others -->
+                <!-- Avatar -->
                 <div
-                  x-show="!message.isMine"
-                  class="flex items-baseline space-x-2 mb-1"
+                  class="avatar-initial"
+                  :class="message.isMine ? 'avatar-mine' : 'avatar-others'"
                 >
                   <span
-                    class="font-medium text-gray-900"
-                    x-text="message.author && message.author.username ? message.author.username : 'Unknown User'"
-                  ></span>
-                  <span
-                    class="text-xs text-gray-500"
-                    x-text="new Date(message.created_at).toLocaleTimeString()"
+                    x-text="message.author && message.author.username ? message.author.username.charAt(0) : 'U'"
                   ></span>
                 </div>
 
-                <!-- Message bubble -->
+                <!-- Message bubble and metadata -->
                 <div
-                  class="relative inline-block p-3 rounded-lg"
-                  :class="message.isMine ? 'bg-indigo-500 text-white ml-auto' : 'bg-gray-100 text-gray-900'"
+                  class="flex flex-col"
+                  :class="message.isMine ? 'items-end' : 'items-start'"
                 >
-                  <p x-text="message.content"></p>
-
-                  <!-- Message status and time for own messages -->
-                  <div
-                    x-show="message.isMine"
-                    class="flex items-center justify-end space-x-1 mt-1"
-                  >
+                  <!-- Username and time (for others only) -->
+                  <div x-show="!message.isMine" class="username-time">
                     <span
-                      class="text-xs opacity-75"
-                      x-text="new Date(message.created_at).toLocaleTimeString()"
+                      class="font-medium"
+                      x-text="message.author && message.author.username ? message.author.username : 'Unknown User'"
                     ></span>
                     <span
-                      class="text-xs"
+                      class="ml-2"
+                      x-text="new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })"
+                    ></span>
+                  </div>
+
+                  <!-- Message bubble -->
+                  <div
+                    class="message-bubble"
+                    :class="message.isMine ? 'mine' : 'others'"
+                  >
+                    <p x-text="message.content"></p>
+                  </div>
+
+                  <!-- Time and status (for own messages only) -->
+                  <div x-show="message.isMine" class="message-meta mine">
+                    <span
+                      x-text="new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })"
+                    ></span>
+                    <span
+                      class="message-status"
                       :class="getMessageStatusClass(message.status)"
                       x-text="getMessageStatusIcon(message.status)"
                     ></span>
                   </div>
                 </div>
               </div>
-
-              <!-- Avatar for own messages -->
-              <div
-                x-show="message.isMine"
-                class="avatar-initial bg-indigo-600"
-                x-text="currentUser ? currentUser.username.charAt(0) : 'U'"
-              ></div>
             </div>
           </template>
 
           <!-- Typing indicators -->
-          <div x-show="typingUsers.length > 0" class="flex space-x-3">
-            <div class="avatar-initial bg-gray-400">...</div>
-            <div class="flex-1">
-              <div class="typing-indicator">
-                <span></span>
-                <span></span>
-                <span></span>
+          <div x-show="typingUsers.length > 0" class="message-row others">
+            <div class="message-content others">
+              <div class="avatar-initial avatar-others">
+                <span>...</span>
               </div>
-              <p class="text-xs text-gray-500 mt-1">
-                <span x-text="typingUsers.join(', ')"></span>
-                <span x-text="typingUsers.length === 1 ? 'is' : 'are'"></span>
-                typing...
-              </p>
+              <div class="flex flex-col items-start">
+                <div class="message-bubble others">
+                  <div class="typing-indicator">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                </div>
+                <div class="message-meta others">
+                  <span x-text="typingUsers.join(', ')"></span>
+                  <span x-text="typingUsers.length === 1 ? 'is' : 'are'"></span>
+                  typing...
+                </div>
+              </div>
             </div>
           </div>
         </div>

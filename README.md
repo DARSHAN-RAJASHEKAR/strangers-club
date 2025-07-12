@@ -76,7 +76,7 @@ Create a .env file in the root directory:
 env# Database
 DATABASE_URL=postgresql+asyncpg://user:password@localhost/strangers_meet
 # For development, you can use SQLite:
-# DATABASE_URL=sqlite+aiosqlite:///./strangers_meet.db
+DATABASE_URL=sqlite+aiosqlite:///./strangers_meet.db
 
 # Security
 SECRET_KEY=your-secret-key-here

@@ -47,8 +47,8 @@
         try {
           await this.fetchCurrentUser();
 
-          // Check if user needs phone verification
-          if (!this.currentUser.phone_verified) {
+          // Check if user needs phone verification (skip for admin/superuser)
+          if (!this.currentUser.phone_verified && !this.currentUser.is_superuser) {
             console.log("User needs phone verification, redirecting...");
             window.location.href = `/verify-phone?token=${this.token}`;
             return;

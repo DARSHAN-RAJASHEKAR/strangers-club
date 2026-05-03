@@ -107,36 +107,6 @@ async def init_db():
             await session.commit()
             await session.refresh(admin)
 
-        # --- AUTO-CREATE DEFAULT GENERAL GROUP ---
-        # Ensure there's at least one general group so platform invites always work.
-        general_group_result = await session.execute(
-            select(Group).where(Group.is_general == True)
-        )
-        general_group = general_group_result.scalars().first()
-
-        if not general_group:
-            print("No general group found — creating default general group...")
-            general_group = Group(
-                name="General",
-                description="Platform-wide general discussion group",
-                is_general=True,
-                owner_id=admin.id
-            )
-            session.add(general_group)
-            await session.commit()
-            await session.refresh(general_group)
-
-            # Create a default channel for the general group
-            default_channel = Channel(
-                name="general",
-                description="General discussion",
-                type=ChannelType.GENERAL,
-                group_id=general_group.id
-            )
-            session.add(default_channel)
-            await session.commit()
-            print(f"Default general group and channel created: {general_group.id}")
-
 # Root route
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):

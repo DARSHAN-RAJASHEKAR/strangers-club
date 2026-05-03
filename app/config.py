@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     # Database - FORCED asyncpg
     DATABASE_URL: str = get_database_url()
     
+    # Admin
+    ADMIN_EMAIL: str = os.getenv("ADMIN_EMAIL", "")
+
     # Debug mode
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
     

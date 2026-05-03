@@ -84,7 +84,7 @@ async def init_db():
         # --- ROBUST ADMIN CREATION ---
         # Find user by email first.
         result = await session.execute(
-            select(User).where(User.email == "timeleftclub@gmail.com")
+            select(User).where(User.email == settings.ADMIN_EMAIL)
         )
         admin = result.scalars().first()
 
@@ -98,7 +98,7 @@ async def init_db():
         else:
             # If user does not exist, create them as a superuser.
             admin = User(
-                email="timeleftclub@gmail.com",
+                email=settings.ADMIN_EMAIL,
                 username="ADMIN",
                 is_active=True,
                 is_superuser=True

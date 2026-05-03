@@ -467,33 +467,12 @@
 
       async generatePlatformInviteCode() {
         try {
-          // First, ensure we have at least one general group
-          let targetGroupId = null;
-
-          if (this.generalGroups.length > 0) {
-            targetGroupId = this.generalGroups[0].id;
-          } else if (this.timeleftGroups.length > 0) {
-            // Fallback to any group the user is a member of
-            targetGroupId = this.timeleftGroups[0].id;
-          } else {
-            throw new Error(
-              "No groups available to generate platform invitation codes"
-            );
-          }
-
-          console.log(
-            `Generating platform invitation for group: ${targetGroupId}`
-          );
-
-          const response = await fetch("/api/v1/invitations", {
+          const response = await fetch("/api/v1/invitations/generate-platform-code", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${this.token}`,
             },
-            body: JSON.stringify({
-              group_id: targetGroupId,
-            }),
           });
 
           if (!response.ok) {

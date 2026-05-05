@@ -118,6 +118,8 @@ async def root(request: Request):
 # Login page
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
+    # Clear session token on login page (fresh start)
+    request.session.pop("token", None)
     error = request.query_params.get("error")
     return templates.TemplateResponse("login.html", {
         "request": request,
@@ -125,10 +127,18 @@ async def login_page(request: Request):
         "error": error
     })
 
+# Logout route
+@app.get("/logout")
+async def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse(url="/login")
+
 # Invitation page (for platform registration)
 @app.get("/invite", response_class=HTMLResponse)
 async def invite_page(request: Request):
-    token = request.query_params.get("token", "")
+    token = request.session.get("token", "")
+    if not token:
+        return RedirectResponse(url="/login")
     return templates.TemplateResponse("invite.html", {"request": request, "token": token})
 
 # Join group page (for joining groups with invitation codes)
@@ -139,13 +149,45 @@ async def join_group_page(request: Request):
 # App page (requires authentication)
 @app.get("/app", response_class=HTMLResponse)
 async def app_page(request: Request):
-    token = request.query_params.get("token", "")
+    token = request.session.get("token", "") or request.query_params.get("token", "")
+    
+    if not token:
+        return RedirectResponse(url="/login")
+    
+    # Migrate query-param token into session and redirect to clean URL
+    if request.query_params.get("token"):
+        request.session["token"] = request.query_params.get("token")
+        return RedirectResponse(url="/app")
+    
+    # Server-side guard: redirect unverified users before rendering dashboard
+    try:
+        from jose import jwt, JWTError
+        from app.crud.user import get_user_by_email
+        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        user_email = payload.get("sub")
+        if user_email:
+            async with AsyncSession(engine) as session:
+                user = await get_user_by_email(session, email=user_email)
+                if user and not user.phone_verified and not user.is_superuser:
+                    return RedirectResponse(url="/verify-phone")
+    except (JWTError, Exception):
+        pass  # Let the client-side handle invalid tokens
+    
     return templates.TemplateResponse("dashboard.html", {"request": request, "token": token})
 
 # Phone verification page
 @app.get("/verify-phone", response_class=HTMLResponse)
 async def verify_phone_page(request: Request):
-    token = request.query_params.get("token", "")
+    token = request.session.get("token", "") or request.query_params.get("token", "")
+    
+    if not token:
+        return RedirectResponse(url="/login")
+    
+    # Migrate query-param token into session and redirect to clean URL
+    if request.query_params.get("token"):
+        request.session["token"] = request.query_params.get("token")
+        return RedirectResponse(url="/verify-phone")
+    
     return templates.TemplateResponse("verify-phone.html", {"request": request, "token": token})
 
 # Health check endpoint

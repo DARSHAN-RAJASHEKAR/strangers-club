@@ -45,6 +45,7 @@ class UserInDB(UserInDBBase):
 class Token(BaseModel):
     access_token: str
     token_type: str
+    requires_phone_verification: Optional[bool] = None
 
 # Token data schema
 class TokenPayload(BaseModel):

@@ -211,9 +211,9 @@ Meet{% endblock %} {% block content %}
             // Redirect based on whether phone verification is needed
             setTimeout(() => {
               if (data.requires_phone_verification) {
-                window.location.href = `/verify-phone?token=${data.access_token}`;
+                window.location.href = `/verify-phone`;
               } else {
-                window.location.href = `/app?token=${data.access_token}`;
+                window.location.href = `/app`;
               }
             }, 1500);
           } else {

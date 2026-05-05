@@ -50,7 +50,7 @@
           // Check if user needs phone verification (skip for admin/superuser)
           if (!this.currentUser.phone_verified && !this.currentUser.is_superuser) {
             console.log("User needs phone verification, redirecting...");
-            window.location.href = `/verify-phone?token=${this.token}`;
+            window.location.href = `/verify-phone`;
             return;
           }
 
@@ -521,7 +521,7 @@
       logout() {
         localStorage.removeItem("token");
         this.closeWebSocket();
-        window.location.href = "/login";
+        window.location.href = "/logout";
       },
 
       onMessageInputFocus() {

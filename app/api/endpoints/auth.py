@@ -135,8 +135,8 @@ async def google_callback(
                 data={"sub": user.email},
                 expires_delta=timedelta(minutes=30)
             )
-            redirect_url = f"{settings.FRONTEND_URL}/invite?token={temp_token}"
-            return RedirectResponse(url=redirect_url)
+            request.session["token"] = temp_token
+            return RedirectResponse(url=f"{settings.FRONTEND_URL}/invite", status_code=302)
         
         # Create access token for authenticated user
         access_token = create_access_token(
@@ -144,15 +144,16 @@ async def google_callback(
             expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         )
         
+        # Store token in session (not in URL)
+        request.session["token"] = access_token
+        
         # Check if user needs phone verification (skip for admin/superuser)
         if not user.phone_verified and not user.is_superuser:
             logger.info(f"User {user.email} needs phone verification")
-            redirect_url = f"{settings.FRONTEND_URL}/verify-phone?token={access_token}"
-            return RedirectResponse(url=redirect_url)
+            return RedirectResponse(url=f"{settings.FRONTEND_URL}/verify-phone", status_code=302)
         
         # If already verified (or admin), go to app
-        redirect_url = f"{settings.FRONTEND_URL}/app?token={access_token}"
-        return RedirectResponse(url=redirect_url)
+        return RedirectResponse(url=f"{settings.FRONTEND_URL}/app", status_code=302)
         
     except Exception as e:
         print(f"Error in google_callback: {e}")
@@ -318,6 +319,9 @@ async def verify_invitation(
             logger.info(f"User {user.email} needs phone verification after invitation verification")
         else:
             logger.info(f"User {user.email} skipping phone verification (verified or admin)")
+        
+        # Update session with the new token (so subsequent page loads use the fresh token)
+        request.session["token"] = access_token
         
         return {
             "access_token": access_token,

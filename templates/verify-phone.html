@@ -248,7 +248,7 @@ endblock %} {% block nav_links %}
 
           if (data.is_verified) {
             // If already verified, redirect to app
-            window.location.href = `/app?token=${this.token}`;
+            window.location.href = `/app`;
           }
         } catch (error) {
           console.error("Error checking verification status:", error);
@@ -346,7 +346,7 @@ endblock %} {% block nav_links %}
 
             // Show success message for 2 seconds before redirecting
             setTimeout(() => {
-              window.location.href = `/app?token=${data.token}`;
+              window.location.href = `/app`;
             }, 2000);
           }
         } catch (error) {

@@ -1,5 +1,5 @@
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta
 from typing import Dict, Any
@@ -89,7 +89,8 @@ async def request_verification(
 
 @router.post("/verify-code", response_model=PhoneVerificationResult)
 async def verify_code(
-    request: PhoneVerificationCheck,
+    verification_request: PhoneVerificationCheck,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -98,8 +99,8 @@ async def verify_code(
     """
     try:
         # Clean inputs
-        phone_number = request.phone_number.strip()
-        verification_code = request.verification_code.strip()
+        phone_number = verification_request.phone_number.strip()
+        verification_code = verification_request.verification_code.strip()
         
         # Log verification attempt
         logger.info(f"Verification attempt for user {current_user.id} with code {verification_code}")
@@ -123,6 +124,9 @@ async def verify_code(
             data={"sub": current_user.email},
             expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         )
+        
+        # Update session with the new token
+        request.session["token"] = access_token
         
         return PhoneVerificationResult(
             success=True,

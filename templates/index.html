@@ -59,3 +59,12 @@ you've met{% endblock %} {% block content %}
   </div>
 </div>
 {% endblock %}
+
+{% block extra_js %}
+<script>
+  // If the user is already logged in (has a token), redirect them directly to the app
+  if (localStorage.getItem("token")) {
+    window.location.href = "/app";
+  }
+</script>
+{% endblock %}

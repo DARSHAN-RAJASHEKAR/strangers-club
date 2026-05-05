@@ -321,8 +321,8 @@ async def websocket_endpoint(
         logger.error(f"WebSocket error: {e}")
         try:
             await websocket.close(code=1008, reason=str(e))
-        except:
-            pass
+        except Exception as close_error:
+            logger.error(f"Error closing websocket: {close_error}")
     finally:
         # Clean up connection
         if user:

@@ -1,5 +1,5 @@
 import uuid
-import random
+import secrets
 import string
 from sqlalchemy import Column, String, DateTime, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
@@ -29,6 +29,6 @@ class Invitation(Base):
     @staticmethod
     def generate_code(username: str) -> str:
         """Generate an invitation code based on username plus one letter and two digits."""
-        letter = random.choice(string.ascii_uppercase)
-        digits = ''.join(random.choices(string.digits, k=2))
+        letter = secrets.choice(string.ascii_uppercase)
+        digits = ''.join(secrets.choice(string.digits) for _ in range(2))
         return f"{username}-{letter}{digits}"

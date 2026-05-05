@@ -1,5 +1,5 @@
 import uuid
-import random
+import secrets
 import string
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Table
 from sqlalchemy.orm import relationship
@@ -43,6 +43,6 @@ class User(Base):
     @staticmethod
     def generate_username() -> str:
         """Generate a random username with 2 letters and 3 digits."""
-        letters = ''.join(random.choices(string.ascii_uppercase, k=2))
-        digits = ''.join(random.choices(string.digits, k=3))
+        letters = ''.join(secrets.choice(string.ascii_uppercase) for _ in range(2))
+        digits = ''.join(secrets.choice(string.digits) for _ in range(3))
         return f"{letters}{digits}"

@@ -1,5 +1,5 @@
 import uuid
-import random
+import secrets
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import Column, String, DateTime, ForeignKey, Boolean, Integer
 from sqlalchemy.orm import relationship
@@ -27,7 +27,7 @@ class PhoneVerification(Base):
     @staticmethod
     def generate_verification_code() -> str:
         """Generate a random 6-digit verification code."""
-        return str(random.randint(100000, 999999))
+        return str(secrets.randbelow(900000) + 100000)
     
     @property
     def is_expired(self) -> bool:

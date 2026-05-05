@@ -62,7 +62,7 @@ class WhatsAppService:
             }
             
             # Send the request
-            response = requests.post(self.api_url, headers=headers, data=payload)
+            response = requests.post(self.api_url, headers=headers, data=payload, timeout=10)
             
             # Check response
             if response.status_code == 200 or response.status_code == 202:

@@ -14,7 +14,7 @@ class WhatsAppService:
         # Use the exact same values as your working test code
         self.api_key = os.getenv("GUPSHUP_API_KEY", "csvhgf8ahngm0dgts79lmytapqxblp7c")
         self.source_number = os.getenv("GUPSHUP_SOURCE_NUMBER", "918217207520")
-        self.app_name = os.getenv("GUPSHUP_APP_NAME", "strangersmeet")
+        self.app_name = os.getenv("GUPSHUP_APP_NAME", "strangersclub")
         self.template_id = os.getenv("GUPSHUP_TEMPLATE_ID", "f8a32b3a-5f70-4524-a94c-4068a0a39212")
         self.api_url = "https://api.gupshup.io/wa/api/v1/template/msg"
         

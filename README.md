@@ -1,6 +1,6 @@
-Strangers Meet
-Strangers Meet is an invite-only social platform designed to help people maintain connections with others they meet in real life. The platform combines group messaging, meetup planning, and secure phone verification to create a trusted community for meaningful connections.
-🌟 Features
+# Strangers Club
+
+Strangers Club is an invite-only social platform designed to help people maintain connections with others they meet in real life. The platform combines group messaging, meetup planning, and secure phone verification to create a trusted community for meaningful connections.
 Core Functionality
 
 Invite-Only Registration: New users require invitation codes from existing members
@@ -65,8 +65,9 @@ Gupshup.io WhatsApp API credentials (optional, for phone verification)
 Installation
 
 Clone the repository
-bashgit clone <repository-url>
-cd strangers-meet
+bash
+git clone <repository-url>
+cd strangers-club
 
 Install dependencies
 bashpip install -r requirements.txt
@@ -186,7 +187,7 @@ SQL injection prevention through SQLAlchemy ORM
 
 🛠️ Development
 Project Structure
-strangers-meet/
+strangers-club/
 ├── app/
 │   ├── api/
 │   │   └── endpoints/          # API route handlers

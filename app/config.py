@@ -30,7 +30,7 @@ def get_google_redirect_uri() -> str:
     return f"{frontend_url}/api/v1/auth/google/callback"
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "Strangers Meet"
+    PROJECT_NAME: str = "Strangers Club"
     API_V1_STR: str = "/api/v1"
     
     # Environment detection

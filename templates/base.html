@@ -8,10 +8,7 @@
       rel="stylesheet"
       href="{{ url_for('static', path='/css/styles.css') }}"
     />
-    <link
-      href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css"
-      rel="stylesheet"
-    />
+    <!-- Removed Tailwind CDN for custom premium UI -->
     <!-- The 'defer' attribute is critical. It ensures this script runs after the page is loaded. -->
     <script
       src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.10/dist/cdn.min.js"
@@ -19,32 +16,28 @@
     ></script>
     {% block extra_css %}{% endblock %}
   </head>
-  <body class="bg-gray-100 min-h-screen flex flex-col">
-    <header class="bg-indigo-700 text-white">
-      <div
-        class="container mx-auto px-4 py-3 flex justify-between items-center"
-      >
+  <body class="app-container">
+    <header class="app-header">
+      <div class="header-inner">
         <div class="flex items-center space-x-2">
-          <a href="/" class="text-xl font-bold">Strangers Club</a>
+          <a href="/" class="brand-logo">Strangers Club</a>
         </div>
         <nav>
-          <ul class="flex space-x-4">
+          <ul class="nav-links">
             {% block nav_links %}
-            <li><a href="/" class="hover:text-indigo-200">Home</a></li>
-            <li><a href="/login" class="hover:text-indigo-200">Login</a></li>
             {% endblock %}
           </ul>
         </nav>
       </div>
     </header>
 
-    <main class="container mx-auto px-4 py-8 flex-grow">
+    <main class="main-content">
       {% block content %}{% endblock %}
     </main>
 
-    <footer class="bg-gray-800 text-white py-6">
+    <footer class="app-footer">
       <div class="container mx-auto px-4">
-        <p class="text-center">
+        <p>
           &copy; <span id="current-year"></span> Strangers Club. All rights
           reserved.
         </p>

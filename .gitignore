@@ -1,2 +1,7 @@
 .env
 TODO.md
+.venv/
+venv/
+__pycache__/
+*.db
+*.pyc

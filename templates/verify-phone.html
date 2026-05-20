@@ -8,22 +8,22 @@ endblock %} {% block nav_links %}
   x-init="init()"
 >
   <div class="text-center mb-10">
-    <h1 class="text-3xl font-bold text-indigo-700 mb-4">Verify Your Phone</h1>
-    <p class="text-gray-600 max-w-2xl mx-auto">
+    <h1 class="title-xl text-primary mb-4">Verify Your Phone</h1>
+    <p class="subtitle mx-auto">
       To complete your registration, please verify your WhatsApp number. We'll
       send you a verification code.
     </p>
   </div>
 
-  <div class="bg-white rounded-lg shadow-lg p-8 max-w-md w-full">
+  <div class="card-glass max-w-md w-full">
     <div class="flex flex-col space-y-6">
-      <h2 class="text-2xl font-semibold text-center">
+      <h2 class="title-md text-center">
         Enter Your Phone Number
       </h2>
 
       <div
         x-show="error"
-        class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative"
+        class="alert alert-error"
         role="alert"
       >
         <span class="block sm:inline" x-text="error"></span>
@@ -31,7 +31,7 @@ endblock %} {% block nav_links %}
 
       <div
         x-show="success"
-        class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative"
+        class="alert alert-success"
         role="alert"
       >
         <span class="block sm:inline" x-text="success"></span>
@@ -43,15 +43,15 @@ endblock %} {% block nav_links %}
         class="space-y-4"
         x-show="!codeRequested"
       >
-        <div class="space-y-2">
+        <div class="form-group space-y-2">
           <label
             for="phone_number"
-            class="block text-sm font-medium text-gray-700"
+            class="form-label"
             >WhatsApp Number</label
           >
           <div class="flex">
             <span
-              class="inline-flex items-center px-3 text-gray-500 bg-gray-100 border border-r-0 border-gray-300 rounded-l-md"
+              class="inline-flex items-center px-3 text-muted bg-body border border-r-0 border-border rounded-l-md"
             >
               +91
             </span>
@@ -59,14 +59,14 @@ endblock %} {% block nav_links %}
               type="tel"
               id="phone_number"
               x-model="phoneNumber"
-              class="mt-1 block w-full border border-gray-300 rounded-r-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+              class="form-input rounded-l-none block w-full"
               placeholder="10-digit number"
               pattern="[6-9][0-9]{9}"
               maxlength="10"
               required
             />
           </div>
-          <p class="mt-1 text-sm text-gray-500">
+          <p class="mt-1 text-sm text-muted">
             Enter your 10-digit Indian mobile number with WhatsApp
           </p>
         </div>
@@ -74,7 +74,7 @@ endblock %} {% block nav_links %}
         <div>
           <button
             type="submit"
-            class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            class="btn btn-primary btn-full flex justify-center py-2 px-4"
             :disabled="sendingRequest"
           >
             <span x-show="!sendingRequest">Send Verification Code</span>
@@ -111,39 +111,39 @@ endblock %} {% block nav_links %}
         class="space-y-4"
         x-show="codeRequested"
       >
-        <div class="space-y-2">
+        <div class="form-group space-y-2">
           <label
             for="verification_code"
-            class="block text-sm font-medium text-gray-700"
+            class="form-label"
             >Verification Code</label
           >
           <input
             type="text"
             id="verification_code"
             x-model="verificationCode"
-            class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+            class="form-input mt-1 block w-full"
             placeholder="6-digit code"
             pattern="[0-9]{6}"
             maxlength="6"
             required
           />
-          <p class="mt-1 text-sm text-gray-500">
+          <p class="mt-1 text-sm text-muted">
             Enter the 6-digit code sent to your WhatsApp
           </p>
         </div>
 
         <div class="flex justify-between items-center">
-          <span class="text-sm text-gray-500" x-show="timeLeft > 0">
+          <span class="text-sm text-muted" x-show="timeLeft > 0">
             Code expires in
             <span class="font-medium" x-text="formatTime(timeLeft)"></span>
           </span>
-          <span class="text-sm text-red-600" x-show="timeLeft <= 0">
+          <span class="text-sm text-danger" x-show="timeLeft <= 0">
             Code expired
           </span>
           <button
             type="button"
             @click="requestVerification()"
-            class="text-sm text-indigo-600 hover:text-indigo-500"
+            class="text-sm text-primary hover:text-primary-hover"
             :disabled="timeLeft > 0 && timeLeft < expiresIn - 30"
             :class="{'opacity-50 cursor-not-allowed': timeLeft > 0 && timeLeft < expiresIn - 30}"
           >
@@ -154,7 +154,7 @@ endblock %} {% block nav_links %}
         <div>
           <button
             type="submit"
-            class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            class="btn btn-primary btn-full flex justify-center py-2 px-4"
             :disabled="verifyingCode || timeLeft <= 0"
             :class="{'opacity-50 cursor-not-allowed': timeLeft <= 0}"
           >
@@ -188,7 +188,7 @@ endblock %} {% block nav_links %}
         <button
           type="button"
           @click="resetForm()"
-          class="w-full text-center text-sm text-gray-600 hover:text-gray-900 mt-4"
+          class="w-full text-center text-sm text-muted hover:text-main mt-4"
         >
           Change Phone Number
         </button>
@@ -197,7 +197,7 @@ endblock %} {% block nav_links %}
   </div>
 
   <div class="mt-8 text-center">
-    <p class="text-gray-600">
+    <p class="text-muted">
       We only use your phone number for verification and never share it with
       third parties.
     </p>

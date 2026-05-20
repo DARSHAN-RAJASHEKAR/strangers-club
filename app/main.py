@@ -113,32 +113,25 @@ async def root(request: Request):
     """
     Render the landing page.
     """
-    return templates.TemplateResponse("index.html", {"request": request})
-
-# Login page
-@app.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request):
-    # Clear session token on login page (fresh start)
-    request.session.pop("token", None)
     error = request.query_params.get("error")
-    return templates.TemplateResponse("login.html", {
-        "request": request,
-        "debug": settings.DEBUG,
-        "error": error
-    })
+    # Clear session token on landing page to ensure fresh start if they are here
+    # (except if they are logged in, the JS on index.html will redirect them, but let's clear it if there's an error)
+    if error:
+        request.session.pop("token", None)
+    return templates.TemplateResponse("index.html", {"request": request, "error": error})
 
 # Logout route
 @app.get("/logout")
 async def logout(request: Request):
     request.session.clear()
-    return RedirectResponse(url="/login")
+    return RedirectResponse(url="/")
 
 # Invitation page (for platform registration)
 @app.get("/invite", response_class=HTMLResponse)
 async def invite_page(request: Request):
     token = request.session.get("token", "")
     if not token:
-        return RedirectResponse(url="/login")
+        return RedirectResponse(url="/")
     return templates.TemplateResponse("invite.html", {"request": request, "token": token})
 
 # Join group page (for joining groups with invitation codes)
@@ -152,7 +145,7 @@ async def app_page(request: Request):
     token = request.session.get("token", "") or request.query_params.get("token", "")
     
     if not token:
-        return RedirectResponse(url="/login")
+        return RedirectResponse(url="/")
     
     # Migrate query-param token into session and redirect to clean URL
     if request.query_params.get("token"):
@@ -181,7 +174,7 @@ async def verify_phone_page(request: Request):
     token = request.session.get("token", "") or request.query_params.get("token", "")
     
     if not token:
-        return RedirectResponse(url="/login")
+        return RedirectResponse(url="/")
     
     # Migrate query-param token into session and redirect to clean URL
     if request.query_params.get("token"):

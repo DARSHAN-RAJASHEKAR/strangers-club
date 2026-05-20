@@ -1,8 +1,9 @@
-{% extends "base.html" %} {% block title %}Dashboard - Strangers Club{% endblock
-%} {% block nav_links %}
-<li><a href="/app" class="hover:text-indigo-200">Dashboard</a></li>
-<li><a href="#" id="logout-btn" class="hover:text-indigo-200">Logout</a></li>
-{% endblock %} {% block content %}
+{% extends "base.html" %} 
+{% block title %}Dashboard - Strangers Club{% endblock %} 
+{% block nav_links %}
+<li><a href="#" id="logout-btn" class="btn btn-outline" style="padding: 0.5rem 1.25rem; font-size: 0.875rem;">Logout</a></li>
+{% endblock %} 
+{% block content %}
 
 <script>
   function app() {

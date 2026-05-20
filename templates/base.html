@@ -6,7 +6,7 @@
     <title>{% block title %}Strangers Club{% endblock %}</title>
     <link
       rel="stylesheet"
-      href="/static/css/styles.css?v=2"
+      href="/static/css/styles.css?v=3"
     />
     <!-- Removed Tailwind CDN for custom premium UI -->
     <!-- The 'defer' attribute is critical. It ensures this script runs after the page is loaded. -->
@@ -18,11 +18,17 @@
   </head>
   <body class="app-container">
     <header class="app-header">
-      <div class="header-inner">
-        <div class="flex items-center space-x-2">
+      <div class="header-inner" style="display: flex; align-items: center; justify-content: space-between; position: relative;">
+        <!-- Left spacer to balance flexbox -->
+        <div style="flex: 1;"></div>
+        
+        <!-- Center Logo -->
+        <div style="display: flex; justify-content: center; flex: 1;">
           <a href="/" class="brand-logo">Strangers Club</a>
         </div>
-        <nav>
+        
+        <!-- Right Navigation -->
+        <nav style="flex: 1; display: flex; justify-content: flex-end;">
           <ul class="nav-links">
             {% block nav_links %}
             {% endblock %}

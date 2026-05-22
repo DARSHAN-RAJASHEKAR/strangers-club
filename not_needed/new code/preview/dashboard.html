@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="theme-color" content="#1B2D5C" />
+<title>Dashboard preview · Strangers Club</title>
+<link rel="stylesheet" href="../static/css/styles.css">
+<script src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.10/dist/cdn.min.js" defer></script>
+<style>
+  /* Preview banner */
+  .preview-banner {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+    background: rgba(18,34,79,0.95); border: 1px solid var(--gold);
+    color: var(--ink); padding: 10px 18px; border-radius: 99px;
+    font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.12em;
+    text-transform: uppercase; z-index: 100; backdrop-filter: blur(12px);
+  }
+  .preview-banner span { color: var(--gold); }
+</style>
+</head>
+<body class="app-container">
+  <header class="app-header">
+    <div class="header-inner">
+      <a href="../preview.html" class="brand-logo">Strangers Club</a>
+      <nav>
+        <ul class="nav-links">
+          <li><a href="#" id="logout-btn" class="btn btn-outline" style="padding: 8px 16px; font-size: 13px; min-height: auto;">Logout</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+  <main class="main-content" style="padding: 0; max-width: 100%;">
+<div x-data="app()" x-init="init()" class="app-container" style="padding: 0;">
+  <div class="dashboard-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <!-- Connection + user meta -->
+      <div class="sidebar-header">
+        <div class="flex items-center" style="gap: 8px;">
+          <span class="status-indicator" :class="isConnected ? 'status-online' : 'status-offline'" style="margin-right: 0;"></span>
+          <span x-text="isConnected ? 'connected' : 'offline'"></span>
+        </div>
+        <span x-show="messageQueue.length > 0" class="text-yellow-400" style="font-size: 10px;">
+          📬 <span x-text="messageQueue.length"></span> queued
+        </span>
+      </div>
+
+      <!-- Platform invite (admin/owner) -->
+      <div style="padding: 14px 14px 8px;">
+        <button
+          @click="generatePlatformInviteCode()"
+          class="btn btn-outline btn-full"
+          style="justify-content: flex-start; gap: 10px; padding: 12px 14px; font-size: 13px;"
+          title="Invite a new user to Strangers Club"
+        >
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path>
+          </svg>
+          <span style="text-align: left; flex: 1;">Invite a stranger</span>
+          <span class="eyebrow" style="font-size: 9.5px;">platform</span>
+        </button>
+      </div>
+
+      <!-- Join an existing group -->
+      <div style="padding: 0 14px 8px;">
+        <a href="/join-group"
+          class="btn btn-outline btn-full"
+          style="justify-content: flex-start; gap: 10px; padding: 12px 14px; font-size: 13px;"
+        >
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+          </svg>
+          <span>Join with a code</span>
+        </a>
+      </div>
+
+      <!-- ────── Timeleft Meet-Up Groups ────── -->
+      <div class="border-t">
+        <div class="section-header cursor-pointer" @click="toggleSection('timeleft')">
+          <div class="flex items-center" style="gap: 6px;">
+            <svg
+              class="h-4 w-4 transition-transform"
+              :class="{'rotate-90': timeleftSectionExpanded}"
+              fill="currentColor" viewBox="0 0 20 20"
+            >
+              <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path>
+            </svg>
+            <span>Meet-up groups</span>
+          </div>
+          <button
+            @click.stop="showCreateGroupModal = true"
+            title="Create a new meet-up group"
+            style="display:flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:6px; color: var(--muted);"
+          >
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div x-show="timeleftSectionExpanded" class="list-container">
+          <template x-for="group in timeleftGroups" :key="group.id">
+            <div
+              class="list-item"
+              :class="{'active': selectedGroup && selectedGroup.id === group.id}"
+              style="display: flex; align-items: center;"
+            >
+              <a href="#" @click.prevent="selectGroup(group)" class="list-item-title flex items-center" style="gap: 10px; flex: 1; min-width: 0;">
+                <span
+                  class="avatar-initial"
+                  :style="{ width: '28px', height: '28px', fontSize: '13px', background: avatarColor(group.name) }"
+                  x-text="(group.name || '#').charAt(0).toUpperCase()"
+                ></span>
+                <span x-text="group.name" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
+              </a>
+              <button
+                x-show="group.owner_id === currentUser.id"
+                @click="generateGroupInviteCode(group.id)"
+                class="text-muted"
+                title="Get invite code"
+                style="margin-left: 6px; padding: 4px;"
+              >
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path>
+                </svg>
+              </button>
+            </div>
+          </template>
+
+          <div x-show="timeleftGroups.length === 0" class="text-muted text-xs" style="padding: 14px 18px;">
+            No meet-up groups yet. <span style="color: var(--accent); cursor: pointer;" @click="showCreateGroupModal = true">Create one →</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ────── General Groups ────── -->
+      <div class="border-t">
+        <div class="section-header cursor-pointer" @click="toggleSection('general')">
+          <div class="flex items-center" style="gap: 6px;">
+            <svg
+              class="h-4 w-4 transition-transform"
+              :class="{'rotate-90': generalSectionExpanded}"
+              fill="currentColor" viewBox="0 0 20 20"
+            >
+              <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path>
+            </svg>
+            <span>General groups</span>
+          </div>
+          <button
+            x-show="currentUser && currentUser.is_superuser"
+            @click.stop="() => { newGroup.is_general = true; showCreateGroupModal = true; }"
+            title="Create a new general group (admin only)"
+            style="display:flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:6px; color: var(--muted);"
+          >
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div x-show="generalSectionExpanded" class="list-container">
+          <template x-for="group in generalGroups" :key="group.id">
+            <a href="#" @click.prevent="selectGroup(group)"
+              class="list-item"
+              :class="{'active': selectedGroup && selectedGroup.id === group.id}"
+              style="display: flex; align-items: center; gap: 10px;"
+            >
+              <span class="text-muted" style="font-family: var(--f-mono); font-size: 14px;">#</span>
+              <span class="list-item-title" x-text="group.name"></span>
+            </a>
+          </template>
+
+          <div x-show="generalGroups.length === 0" class="text-muted text-xs" style="padding: 12px 18px;">
+            No general groups available.
+          </div>
+        </div>
+      </div>
+
+      <div style="flex: 1;"></div>
+
+      <!-- User mini-strip -->
+      <div style="padding: 12px 14px; border-top: 1px solid var(--border-soft); display: flex; align-items: center; gap: 10px;">
+        <span class="avatar-initial" style="width: 30px; height: 30px; font-size: 14px;" x-text="(currentUser.username || '?').charAt(0).toUpperCase()"></span>
+        <div style="flex: 1; min-width: 0;">
+          <div style="font-family: var(--f-serif); font-size: 15px; color: var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" x-text="currentUser.username || 'signed in'"></div>
+          <div class="eyebrow" style="font-size: 9.5px;" x-text="currentUser.is_superuser ? 'admin' : 'member'"></div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main chat area -->
+    <section class="chat-area">
+      <!-- Welcome -->
+      <div
+        x-show="!selectedGroup"
+        class="h-full flex flex-col items-center justify-center text-center"
+        style="padding: 24px;"
+      >
+        <div style="max-width: 460px;">
+          <div class="eyebrow mb-4">welcome back</div>
+          <h2 class="title-lg">
+            Pick a group<br /><em>from the left.</em>
+          </h2>
+          <p class="text-sm text-muted" style="margin-top: 12px; line-height: 1.6;">
+            Or create a new meet-up to bring together the strangers from your last evening.
+          </p>
+          <button
+            class="btn btn-primary"
+            @click="showCreateGroupModal = true"
+            style="margin-top: 24px;"
+          >
+            New meet-up
+          </button>
+        </div>
+      </div>
+
+      <!-- Chat -->
+      <template x-if="selectedGroup">
+        <div style="display: flex; flex-direction: column; height: 100%;">
+          <!-- Chat header -->
+          <div class="chat-header">
+            <span class="avatar-initial"
+              :style="{ width: '40px', height: '40px', fontSize: '18px', background: avatarColor(selectedGroup.name) }"
+              x-text="(selectedGroup.name || '#').charAt(0).toUpperCase()"
+            ></span>
+            <div style="flex: 1; min-width: 0;">
+              <h3 class="title-md" style="margin-bottom: 2px;" x-text="selectedGroup.name"></h3>
+              <div class="text-xs" x-text="selectedGroup.description || (selectedGroup.is_general ? 'general group' : 'meet-up group')"></div>
+            </div>
+            <button
+              x-show="isGroupOwner && !selectedGroup.is_general"
+              @click="generateGroupInviteCode(selectedGroup.id)"
+              class="btn btn-outline"
+              style="padding: 8px 14px; font-size: 12px; min-height: auto; font-family: var(--f-mono); letter-spacing: 0.05em; text-transform: uppercase;"
+            >
+              Invite code
+            </button>
+          </div>
+
+          <!-- Messages -->
+          <div id="messages-container">
+            <div x-show="messages.length === 0" class="text-center text-muted" style="padding: 48px 16px;">
+              <div class="eyebrow mb-4">silence</div>
+              <p style="font-family: var(--f-serif); font-style: italic; font-size: 20px; color: var(--ink-2);">
+                Be the first to say something.
+              </p>
+            </div>
+
+            <template x-for="message in messages" :key="message.id || message.tempId">
+              <div
+                class="message-row"
+                :class="(message.author_id === currentUser.id) ? 'mine' : 'others'"
+              >
+                <div
+                  class="message-content"
+                  :class="(message.author_id === currentUser.id) ? 'mine' : 'others'"
+                >
+                  <div
+                    class="avatar-initial"
+                    :class="(message.author_id === currentUser.id) ? 'avatar-mine' : 'avatar-others'"
+                    :style="(message.author_id !== currentUser.id) ? { background: avatarColor(message.author && message.author.username) } : {}"
+                  >
+                    <span
+                      x-text="message.author && message.author.username ? message.author.username.charAt(0).toUpperCase() : 'U'"
+                    ></span>
+                  </div>
+
+                  <div
+                    class="flex flex-col"
+                    :class="(message.author_id === currentUser.id) ? 'items-end' : 'items-start'"
+                  >
+                    <div
+                      x-show="(message.author_id !== currentUser.id)"
+                      class="username-time"
+                    >
+                      <span class="font-medium"
+                        x-text="message.author && message.author.username ? message.author.username : 'Unknown'"
+                      ></span>
+                      <span class="ml-2 text-muted"
+                        x-text="new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })"
+                      ></span>
+                    </div>
+
+                    <div
+                      class="message-bubble"
+                      :class="(message.author_id === currentUser.id) ? 'mine' : 'others'"
+                    >
+                      <p x-text="message.content" style="margin: 0;"></p>
+                    </div>
+
+                    <div
+                      x-show="(message.author_id === currentUser.id)"
+                      class="message-meta mine"
+                    >
+                      <span x-text="new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })"></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <!-- Typing -->
+            <div x-show="typingUsers.length > 0" class="message-row others">
+              <div class="message-content others">
+                <div class="avatar-initial avatar-others"><span>·</span></div>
+                <div class="flex flex-col items-start">
+                  <div class="message-bubble others" style="padding: 10px 14px;">
+                    <div class="typing-indicator">
+                      <span></span><span></span><span></span>
+                    </div>
+                  </div>
+                  <div class="message-meta others">
+                    <span x-text="typingUsers.join(', ')"></span>
+                    <span x-text="typingUsers.length === 1 ? ' is typing…' : ' are typing…'"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Composer -->
+          <div class="chat-input-container">
+            <form @submit.prevent="sendMessage" class="chat-input-wrapper">
+              <input
+                type="text"
+                x-model="newMessage"
+                @focus="onMessageInputFocus"
+                @blur="onMessageInputBlur"
+                @keydown="onMessageInputKeydown"
+                placeholder="say something to the table…"
+                class="chat-input"
+                autocomplete="off"
+              />
+              <button
+                type="submit"
+                :disabled="!newMessage.trim()"
+                class="send-btn"
+                title="Send"
+              >
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                  <path d="M2 9l14-6-5 14-3-6-6-2z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none"/>
+                </svg>
+              </button>
+            </form>
+          </div>
+        </div>
+      </template>
+    </section>
+  </div>
+
+  <!-- ─────── Create Group Modal ─────── -->
+  <div x-show="showCreateGroupModal" class="fixed inset-0 flex items-center justify-center z-50 modal-backdrop" style="padding: 24px;">
+    <div class="modal-card">
+      <div class="eyebrow mb-2" x-text="newGroup.is_general ? 'admin · platform-wide' : 'new meet-up'"></div>
+      <h3 class="title-lg" x-text="newGroup.is_general ? 'New general group' : 'New meet-up group'"></h3>
+
+      <form @submit.prevent="createGroup" class="space-y-4" style="margin-top: 18px;">
+        <div class="form-group">
+          <label class="form-label">Group name</label>
+          <input type="text" x-model="newGroup.name" required class="form-input" placeholder="Spago · dinner crew" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description (optional)</label>
+          <textarea x-model="newGroup.description" rows="3" class="form-input" placeholder="What's this group for?"></textarea>
+        </div>
+        <div class="form-group" x-show="!newGroup.is_general">
+          <label class="form-label">Meet-up date (optional)</label>
+          <input type="datetime-local" x-model="newGroup.meetup_date" class="form-input" />
+        </div>
+        <div class="flex justify-end space-x-2 pt-4">
+          <button
+            type="button"
+            @click="showCreateGroupModal = false; resetNewGroup()"
+            class="btn btn-outline"
+          >Cancel</button>
+          <button type="submit" class="btn btn-primary">Create group</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ─────── Group Invite Code Modal ─────── -->
+  <div x-show="showGroupInviteModal" class="fixed inset-0 flex items-center justify-center z-50 modal-backdrop" style="padding: 24px;">
+    <div class="modal-card">
+      <div class="eyebrow mb-2">group invite</div>
+      <h3 class="title-lg">Share this code.</h3>
+      <p class="text-sm text-muted" style="margin: 8px 0 16px;">
+        Anyone with this code can join your meet-up. Treat it like a key.
+      </p>
+      <div class="invite-code-display">
+        <code x-text="groupInviteCode"></code>
+      </div>
+      <div class="flex justify-end space-x-2 pt-4">
+        <button type="button" @click="showGroupInviteModal = false" class="btn btn-outline">Close</button>
+        <button type="button" @click="copyToClipboard(groupInviteCode)" class="btn btn-primary">Copy code</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────── Platform Invite Code Modal ─────── -->
+  <div x-show="showPlatformInviteModal" class="fixed inset-0 flex items-center justify-center z-50 modal-backdrop" style="padding: 24px;">
+    <div class="modal-card">
+      <div class="eyebrow mb-2">platform invite</div>
+      <h3 class="title-lg">Invite a new stranger.</h3>
+      <p class="text-sm text-muted" style="margin: 8px 0 16px;">
+        This code lets them register at Strangers Club. They'll show up under "members" once they're in.
+      </p>
+      <div class="invite-code-display">
+        <code x-text="platformInviteCode"></code>
+      </div>
+      <div class="flex justify-end space-x-2 pt-4">
+        <button type="button" @click="showPlatformInviteModal = false" class="btn btn-outline">Close</button>
+        <button type="button" @click="copyToClipboard(platformInviteCode)" class="btn btn-primary">Copy code</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+  </main>
+  <script>
+  function app() {
+    return {
+      token: "{{ token }}" || localStorage.getItem("token"),
+      currentUser: { id: null, username: '', is_superuser: false, phone_verified: true },
+      timeleftGroups: [],
+      generalGroups: [],
+      messages: [],
+      selectedGroup: null,
+      selectedChannel: null,
+      newMessage: "",
+      loading: true,
+      socket: null,
+      isConnected: false,
+      messageQueue: [],
+      showCreateGroupModal: false,
+      showGroupInviteModal: false,
+      showPlatformInviteModal: false,
+      groupInviteCode: "",
+      platformInviteCode: "",
+      isGroupOwner: false,
+      timeleftSectionExpanded: true,
+      generalSectionExpanded: true,
+      typingUsers: [],
+      typingTimeout: null,
+      newGroup: {
+        name: "",
+        description: "",
+        meetup_date: null,
+        is_general: false,
+      },
+
+      async init() {
+        // (preview: skip auth)
+
+        // (preview: skip token persist)
+
+        try {
+          this.currentUser = { id: 1, username: 'Niharika', is_superuser: true, phone_verified: true };
+
+          // (preview: phone verified)
+
+          this.timeleftGroups = [
+            { id: 1, name: 'Spago · dinner crew', is_general: false, owner_id: 1, description: 'Tuesday Nov 4, 19:30 · Mumbai' },
+            { id: 2, name: 'Sunday hike · Mt Tam', is_general: false, owner_id: 2, description: 'Sun 8am · Stinson trail' },
+            { id: 3, name: "Tokyo trip · spring '26", is_general: false, owner_id: 1, description: 'Mar 14–22 · 7 going' },
+            { id: 4, name: 'Founders coffee · Oct', is_general: false, owner_id: 3, description: 'Sat 10am · Blue Bottle' },
+          ];
+          this.generalGroups = [
+            { id: 5, name: 'New in town', is_general: true, owner_id: 0 },
+            { id: 6, name: 'Book club', is_general: true, owner_id: 0 },
+            { id: 7, name: 'Run club', is_general: true, owner_id: 0 },
+          ];
+          // auto-select first group
+          setTimeout(() => this.selectGroup(this.timeleftGroups[0]), 50);
+          
+
+          const lo = document.getElementById("logout-btn"); if (lo) lo.addEventListener("click", e => e.preventDefault());
+        } catch (error) {
+          console.error("Initialization error:", error);
+          if (error.status === 401) { this.logout(); }
+        } finally {
+          this.loading = false;
+        }
+      },
+
+      async fetchCurrentUser() {
+        const response = await fetch("/api/v1/auth/me", {
+          headers: { Authorization: `Bearer ${this.token}` },
+        });
+        if (!response.ok) throw { status: response.status, message: "Failed to fetch user data" };
+        this.currentUser = await response.json();
+      },
+
+      async fetchGroups() {
+        const response = await fetch("/api/v1/groups", {
+          headers: { Authorization: `Bearer ${this.token}` },
+        });
+        if (!response.ok) throw { status: response.status, message: "Failed to fetch groups" };
+        const allGroups = await response.json();
+        this.timeleftGroups = allGroups.filter((g) => !g.is_general);
+        this.generalGroups = allGroups.filter((g) => g.is_general);
+      },
+
+      async selectGroup(group) {
+        this.selectedGroup = group;
+        this.isGroupOwner = group.owner_id === this.currentUser.id;
+        this.selectedChannel = { id: 'preview-' + group.id };
+        this.isConnected = true;
+        this.messages = [
+          { id: 1, author_id: 2, author: { id: 2, username: 'Maya' },     content: 'okay verdict — wine bar on Hayes was incredible last night.', created_at: new Date(Date.now()-1000*60*42).toISOString() },
+          { id: 2, author_id: 3, author: { id: 3, username: 'Theo' },     content: 'screenshotted the natural list, sharing now',                  created_at: new Date(Date.now()-1000*60*40).toISOString() },
+          { id: 3, author_id: 3, author: { id: 3, username: 'Theo' },     content: 'also: who said they had the journalist friend?',               created_at: new Date(Date.now()-1000*60*39).toISOString() },
+          { id: 4, author_id: 1, author: { id: 1, username: 'Niharika' }, content: "that was me. she's in Berlin until the 14th but down for the next one.", created_at: new Date(Date.now()-1000*60*35).toISOString() },
+          { id: 5, author_id: 4, author: { id: 4, username: 'Priya' },    content: 'wait — are we doing dinner this Tuesday or next?',             created_at: new Date(Date.now()-1000*60*31).toISOString() },
+          { id: 6, author_id: 1, author: { id: 1, username: 'Niharika' }, content: "this Tuesday. 7:30. I'll book at 6.",                          created_at: new Date(Date.now()-1000*60*30).toISOString() },
+        ];
+        this.$nextTick(() => this.scrollToBottom());
+      },
+
+      async fetchMessages(channelId) {
+        const response = await fetch(`/api/v1/messages/channel/${channelId}`, {
+          headers: { Authorization: `Bearer ${this.token}` },
+        });
+        if (!response.ok) {
+          console.error("Failed to fetch messages:", response.statusText);
+          return;
+        }
+        const serverMessages = await response.json();
+        this.messages = serverMessages.map((message) => ({
+          ...message,
+          isMine: message.author_id === this.currentUser.id,
+        }));
+        this.saveLocalMessages();
+        this.$nextTick(() => { this.scrollToBottom(); });
+      },
+
+      setupWebSocket(channelId) { this.isConnected = true; return;
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const host = window.location.host;
+        const wsUrl = `${protocol}//${host}/api/v1/messages/ws/${channelId}?token=${this.token}`;
+
+        this.socket = new WebSocket(wsUrl);
+
+        this.socket.onopen = () => {
+          this.isConnected = true;
+          this.processMessageQueue();
+        };
+
+        this.socket.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            this.handleWebSocketMessage(data);
+          } catch (error) {
+            console.error("Error parsing message:", error);
+          }
+        };
+
+        this.socket.onclose = (event) => {
+          this.isConnected = false;
+          if (event.code !== 1000 && this.selectedChannel) {
+            setTimeout(() => {
+              if (this.selectedChannel) {
+                this.setupWebSocket(this.selectedChannel.id);
+              }
+            }, 3000);
+          }
+        };
+
+        this.socket.onerror = (error) => {
+          console.error("Real-time chat error:", error);
+          this.isConnected = false;
+        };
+      },
+
+      handleWebSocketMessage(data) {
+        switch (data.type) {
+          case "connection_established": break;
+          case "new_message": this.addMessage(data); break;
+          case "message_sent": this.updateMessageId(data.tempId || data.id, data); break;
+          case "typing": this.handleTypingIndicator(data); break;
+          case "error": console.error("Chat error:", data.message); break;
+        }
+      },
+
+      addMessage(messageData) {
+        const message = {
+          id: messageData.id,
+          tempId: messageData.tempId,
+          content: messageData.content,
+          author: messageData.author,
+          author_id: messageData.author?.id || messageData.author_id,
+          channel_id: messageData.channel_id,
+          created_at: messageData.created_at,
+          isMine: messageData.author?.id === this.currentUser?.id,
+        };
+        this.messages.push(message);
+        this.saveLocalMessages();
+        this.$nextTick(() => { this.scrollToBottom(); });
+      },
+
+      updateMessageId(messageId, newData) {
+        const message = this.messages.find((m) => m.id === messageId || m.tempId === messageId);
+        if (message) {
+          if (newData) {
+            message.id = newData.id;
+            message.created_at = newData.created_at;
+          }
+          this.saveLocalMessages();
+        }
+      },
+
+      generateTempId() {
+        return "temp_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+      },
+
+      async sendMessage() {
+        if (!this.newMessage.trim() || !this.selectedChannel) return;
+
+        const messageContent = this.newMessage.trim();
+        const tempId = this.generateTempId();
+
+        const optimisticMessage = {
+          tempId: tempId,
+          content: messageContent,
+          author: { id: this.currentUser.id, username: this.currentUser.username },
+          author_id: this.currentUser.id,
+          channel_id: this.selectedChannel.id,
+          created_at: new Date().toISOString(),
+          isMine: true,
+        };
+
+        this.messages.push(optimisticMessage);
+        this.newMessage = "";
+        this.saveLocalMessages();
+        this.$nextTick(() => { this.scrollToBottom(); });
+
+        const messageToSend = {
+          type: "new_message",
+          tempId: tempId,
+          content: messageContent,
+          channel_id: this.selectedChannel.id,
+        };
+
+        // (preview: pretend the server confirmed)
+        setTimeout(() => this.updateMessageId(tempId, { id: Date.now(), created_at: new Date().toISOString() }), 200);
+      },
+
+      queueMessage(message) { this.messageQueue.push(message); },
+
+      processMessageQueue() {
+        if (this.messageQueue.length === 0) return;
+        const queue = [...this.messageQueue];
+        this.messageQueue = [];
+        queue.forEach((message) => {
+          try {
+            this.socket.send(JSON.stringify(message));
+          } catch (error) {
+            this.messageQueue.push(message);
+          }
+        });
+      },
+
+      saveLocalMessages() {
+        if (!this.selectedChannel) return;
+        const key = `messages_${this.selectedChannel.id}`;
+        try {
+          const messagesToSave = this.messages.map((message) => ({
+            ...message,
+            author_id: message.author_id || message.author?.id,
+            isMine: message.author_id === this.currentUser.id,
+          }));
+          localStorage.setItem(key, JSON.stringify(messagesToSave));
+        } catch (error) {
+          console.error("Failed to save messages locally:", error);
+        }
+      },
+
+      loadLocalMessages() {
+        if (!this.selectedChannel) return;
+        const key = `messages_${this.selectedChannel.id}`;
+        try {
+          const cached = localStorage.getItem(key);
+          if (cached) {
+            const cachedMessages = JSON.parse(cached);
+            this.messages = cachedMessages.map((message) => ({
+              ...message,
+              author_id: message.author_id || message.author?.id,
+              isMine: message.author_id === this.currentUser.id,
+            }));
+          }
+        } catch (error) {
+          console.error("Failed to load cached messages:", error);
+        }
+      },
+
+      handleTypingIndicator(data) {
+        if (data.is_typing) {
+          if (!this.typingUsers.includes(data.user)) {
+            this.typingUsers.push(data.user);
+          }
+        } else {
+          this.typingUsers = this.typingUsers.filter((user) => user !== data.user);
+        }
+      },
+
+      sendTypingIndicator(isTyping) {
+        if (this.typingTimeout) clearTimeout(this.typingTimeout);
+        if (this.isConnected) {
+          this.socket.send(JSON.stringify({ type: "typing", is_typing: isTyping }));
+        }
+        if (isTyping) {
+          this.typingTimeout = setTimeout(() => {
+            if (this.isConnected) {
+              this.socket.send(JSON.stringify({ type: "typing", is_typing: false }));
+            }
+          }, 3000);
+        }
+      },
+
+      closeWebSocket() {
+        if (this.socket) {
+          this.socket.close(1000);
+          this.socket = null;
+          this.isConnected = false;
+        }
+      },
+
+      scrollToBottom() {
+        const container = document.getElementById("messages-container");
+        if (container) container.scrollTop = container.scrollHeight;
+      },
+
+      async createGroup() {
+        try {
+          const response = await fetch("/api/v1/groups", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${this.token}`,
+            },
+            body: JSON.stringify(this.newGroup),
+          });
+          if (!response.ok) throw new Error("Failed to create group");
+          const group = await response.json();
+          if (group.is_general) {
+            this.generalGroups.push(group);
+          } else {
+            this.timeleftGroups.push(group);
+          }
+          this.showCreateGroupModal = false;
+          this.resetNewGroup();
+          await this.selectGroup(group);
+        } catch (error) {
+          console.error("Error creating group:", error);
+          alert("Failed to create group. Please try again.");
+        }
+      },
+
+      async generateGroupInviteCode(groupId) {
+        try {
+          const response = await fetch(
+            `/api/v1/invitations/generate-new-code/${groupId}`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${this.token}`,
+              },
+            }
+          );
+          if (!response.ok) throw new Error("Failed to generate invite code");
+          const invitation = await response.json();
+          this.groupInviteCode = invitation.code;
+          this.showGroupInviteModal = true;
+        } catch (error) {
+          console.error("Error generating invite code:", error);
+          alert("Failed to generate invite code. Please try again.");
+        }
+      },
+
+      async generatePlatformInviteCode() {
+        try {
+          const response = await fetch("/api/v1/invitations/generate-platform-code", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${this.token}`,
+            },
+          });
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || "Failed to generate platform invite code");
+          }
+          const invitation = await response.json();
+          this.platformInviteCode = invitation.code;
+          this.showPlatformInviteModal = true;
+        } catch (error) {
+          console.error("Error generating platform invite code:", error);
+          alert(`Failed to generate platform invite code: ${error.message}`);
+        }
+      },
+
+      copyToClipboard(text) {
+        navigator.clipboard
+          .writeText(text)
+          .then(() => alert("Invite code copied to clipboard!"))
+          .catch(() => alert("Failed to copy invite code"));
+      },
+
+      toggleSection(section) {
+        if (section === "timeleft") this.timeleftSectionExpanded = !this.timeleftSectionExpanded;
+        else if (section === "general") this.generalSectionExpanded = !this.generalSectionExpanded;
+      },
+
+      resetNewGroup() {
+        this.newGroup = { name: "", description: "", meetup_date: null, is_general: false };
+      },
+
+      logout() {
+        localStorage.removeItem("token");
+        this.closeWebSocket();
+        window.location.href = "/logout";
+      },
+
+      onMessageInputFocus() { this.sendTypingIndicator(true); },
+      onMessageInputBlur() { this.sendTypingIndicator(false); },
+      onMessageInputKeydown() {
+        if (!this.typingTimeout) this.sendTypingIndicator(true);
+      },
+
+      avatarColor(name) {
+        if (!name) return 'var(--gold)';
+        const palette = ['#C76A4A','#5A7A52','#8B5A8C','#3B5A8A','#A38754','#6B7A8F','#8C5A55','#E25D2F','#C49333'];
+        let h = 0;
+        for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+        return palette[h % palette.length];
+      },
+    };
+  }
+</script>
+  <div class="preview-banner">live preview · <span>stub data, no backend</span></div>
+</body>
+</html>

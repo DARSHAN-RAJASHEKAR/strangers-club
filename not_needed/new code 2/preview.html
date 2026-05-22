@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Strangers Club · Salon Cobalt preview</title>
+<link rel="stylesheet" href="static/css/styles.css?v=salon-cobalt-2" />
+<style>
+  .hero { padding: 72px 28px 24px; text-align: center; max-width: 760px; margin: 0 auto; }
+  .grid {
+    max-width: 1180px; margin: 36px auto 80px;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px;
+    padding: 0 28px;
+  }
+  .preview-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 22px 24px;
+    cursor: pointer; text-decoration: none; color: var(--ink);
+    display: flex; flex-direction: column; gap: 4px;
+    transition: border-color .12s ease, transform .12s ease;
+  }
+  .preview-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .preview-card .step  { font-family: var(--f-mono); font-size: 10.5px; color: var(--muted); letter-spacing: 0.15em; text-transform: lowercase; }
+  .preview-card .title { font-family: var(--f-serif); font-size: 22px; color: var(--ink); margin-top: 6px; }
+  .preview-card .blurb { font-size: 13px; color: var(--ink-2); line-height: 1.55; margin-top: 6px; }
+  .preview-card .open  { font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.15em; color: var(--accent); margin-top: 16px; text-transform: lowercase; }
+</style>
+</head>
+<body>
+
+  <div class="hero">
+    <div style="display:flex; justify-content:center; align-items:center; gap:10px;">
+      <span class="monogram monogram--md">SC</span>
+      <span class="mono-meta">strangers club · salon · cobalt</span>
+    </div>
+    <h1 class="title-xl" style="margin-top: 22px;">
+      The frontend you<br />
+      <span class="italic-accent">actually wanted.</span>
+    </h1>
+    <p class="text-sm" style="color: var(--ink-2); max-width: 540px; margin: 18px auto 0;">
+      Five screens, rebuilt to match the Salon mockup in Cobalt. Monogram,
+      ticket-stub invite, 3-pane dashboard, the lot. Click a card to preview.
+    </p>
+    <div style="margin-top: 20px;">
+      <svg class="star-ornament" viewBox="0 0 42 10" aria-hidden="true">
+        <path d="M0 5 H16" stroke="var(--gold)" stroke-width="0.7" />
+        <path d="M26 5 H42" stroke="var(--gold)" stroke-width="0.7" />
+        <path d="M21 0.5 L22 4 L25 5 L22 6 L21 9.5 L20 6 L17 5 L20 4 Z" fill="var(--gold)" />
+      </svg>
+    </div>
+  </div>
+
+  <div class="grid">
+    <a href="preview/landing.html" class="preview-card">
+      <span class="step">01 · landing</span>
+      <div class="title">Stay in touch.</div>
+      <p class="blurb">Monogram, big serif headline, members card, Google sign-in.</p>
+      <div class="open">open preview →</div>
+    </a>
+
+    <a href="preview/invite.html" class="preview-card">
+      <span class="step">02 · invite code</span>
+      <div class="title">The ticket stub.</div>
+      <p class="blurb">Admit-one ticket with perforated edges and 8-slot code input.</p>
+      <div class="open">open preview →</div>
+    </a>
+
+    <a href="preview/verify-phone.html" class="preview-card">
+      <span class="step">03 · phone verify</span>
+      <div class="title">By WhatsApp.</div>
+      <p class="blurb">Serif phone input with country prefix and OTP step.</p>
+      <div class="open">open preview →</div>
+    </a>
+
+    <a href="preview/join-group.html" class="preview-card">
+      <span class="step">04 · join group</span>
+      <div class="title">The group pass.</div>
+      <p class="blurb">Second ticket stub, this time for joining an existing meet-up.</p>
+      <div class="open">open preview →</div>
+    </a>
+
+    <a href="preview/dashboard.html" class="preview-card" style="grid-column: 1 / -1;">
+      <span class="step">05 · dashboard</span>
+      <div class="title">The Club. <span class="italic-ink" style="font-style:italic; color: var(--ink-2);">Three panes.</span></div>
+      <p class="blurb">Sidebar (groups + invite ribbon) · chat (header + messages + composer) · right rail (meet-up details + members + house rules).</p>
+      <div class="open">open preview →</div>
+    </a>
+  </div>
+
+  <div style="text-align:center; padding: 0 28px 60px; color: var(--muted); font-size: 12px;">
+    <div class="mono-meta">install · static/css/styles.css + templates/*.html</div>
+    <div style="margin-top: 6px;">See <code style="color: var(--ink-2);">INSTALL.md</code> in this folder.</div>
+  </div>
+
+</body>
+</html>

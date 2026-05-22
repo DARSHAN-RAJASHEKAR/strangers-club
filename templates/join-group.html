@@ -1,119 +1,179 @@
-{% extends "base.html" %} {% block title %}Join Group — Strangers Club{% endblock %} {% block nav_links %}
-<li>
-  <a href="#" id="logout-btn" class="btn btn-outline" style="padding: 8px 16px; font-size: 13px; min-height: auto;">Logout</a>
-</li>
-{% endblock %} {% block content %}
-<div class="flex flex-col items-center" x-data="joinGroupForm()" x-init="init()" style="padding-top: 12px;">
-  <div class="text-center mb-10" style="max-width: 600px;">
-    <div class="eyebrow mb-4">Join a meet-up</div>
-    <h1 class="title-xl">
-      Got a <em>group code?</em>
+{% extends "base.html" %}
+{% block title %}Join a group — Strangers Club{% endblock %}
+
+{% block content %}
+<div class="stage" x-data="joinGroupForm()">
+  <div class="stage-inner">
+
+    <!-- Top bar -->
+    <div class="top-meta">
+      <a href="/app" class="back-link">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>back to club</span>
+      </a>
+      <span class="mono-meta">join with a code</span>
+    </div>
+
+    <!-- Title -->
+    <div class="eyebrow mb-3">a group invite</div>
+    <h1 class="title-lg">
+      Got a code from<br />
+      <span class="italic-accent">someone at the table?</span>
     </h1>
-    <p class="subtitle" style="margin-bottom: 0;">
-      Enter the invitation code from the group owner. It'll add you to their meet-up room.
+    <p class="text-sm" style="color: var(--ink-2); max-width: 340px; margin-top: 14px;">
+      Group codes are how meet-ups carry on. Enter the code the host
+      shared — you'll show up in their list.
     </p>
-  </div>
 
-  <div class="card-glass max-w-md" style="margin: 0 auto;">
-    <div class="flex flex-col" style="gap: 14px;">
-      <div x-show="error" class="alert alert-error" role="alert">
-        <span x-text="error"></span>
-      </div>
-      <div x-show="success" class="alert alert-success" role="alert">
-        <span x-text="success"></span>
-      </div>
+    <div x-show="error" class="alert alert-error" role="alert" style="margin-top: 18px;">
+      <span x-text="error"></span>
+    </div>
+    {% if error %}
+    <div class="alert alert-error" role="alert" style="margin-top: 18px;">
+      <span>{{ error }}</span>
+    </div>
+    {% endif %}
 
-      <form @submit.prevent="joinGroup" class="space-y-4">
-        <div class="form-group">
-          <label for="group_code" class="form-label">Group invitation code</label>
-          <input
-            type="text"
-            id="group_code"
-            x-model="code"
-            class="form-input code-input"
-            placeholder="ADMIN-A12"
-            required
-            autocomplete="off"
-            spellcheck="false"
-            style="text-transform: uppercase;"
-          />
-          <p class="text-xs text-muted" style="margin-top: 8px;">
-            Ask the group owner for their code if you don't have one.
-          </p>
+    <!-- Ticket Stub -->
+    <form @submit.prevent="submitCode" style="margin-top: 28px;">
+      <div class="ticket">
+        <div class="ticket__perfs ticket__perfs--left" aria-hidden="true">
+          <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+        </div>
+        <div class="ticket__perfs ticket__perfs--right" aria-hidden="true">
+          <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
         </div>
 
-        <button type="submit" class="btn btn-primary btn-full" :disabled="loading">
-          <span x-show="!loading">Join group</span>
-          <span x-show="loading" class="flex items-center" style="gap: 8px;">
-            <svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            Joining…
-          </span>
-        </button>
-      </form>
+        <div class="ticket__head">
+          <span class="monogram monogram--sm">SC</span>
+          <span class="mono-meta" style="color: var(--gold);">group pass</span>
+        </div>
 
-      <div class="border-t pt-4 text-center" style="margin-top: 4px;">
-        <a href="/app" class="text-sm text-primary" style="font-weight: 500;">← Back to dashboard</a>
+        <div class="form-label" style="margin-bottom: 8px;">group code</div>
+        <div class="otp-grid">
+          <template x-for="i in 8" :key="i">
+            <input
+              type="text"
+              maxlength="1"
+              autocomplete="off"
+              x-model="code[i-1]"
+              @input="onCodeInput($event, i-1)"
+              @keydown="onCodeKey($event, i-1)"
+              @paste="onCodePaste($event)"
+              :ref="`cell${i-1}`"
+            />
+          </template>
+        </div>
+
+        <div class="rule rule-soft" style="margin: 22px 0 0;"></div>
+
+        <div class="ticket__foot">
+          <div>
+            <div class="form-label">joining as</div>
+            <div class="label-val italic" x-text="username || 'you'"></div>
+          </div>
+          <div style="text-align:right;">
+            <div class="form-label">code length</div>
+            <div class="label-val" x-text="`${code.join('').length} / 8`"></div>
+          </div>
+        </div>
       </div>
+
+      <button
+        type="submit"
+        class="btn btn-primary btn-full"
+        :disabled="loading || code.join('').length < 6"
+        style="margin-top: 24px;"
+      >
+        <span x-show="!loading">Join the group</span>
+        <span x-show="loading">Joining…</span>
+      </button>
+    </form>
+
+    <div class="footer-line">
+      No code? <span class="link link-accent">ask the host who invited you</span>
     </div>
+
   </div>
 </div>
+{% endblock %}
 
+{% block extra_js %}
 <script>
   function joinGroupForm() {
     return {
-      token: localStorage.getItem("token"),
-      code: "",
+      code: ["", "", "", "", "", "", "", ""],
+      username: "",
       loading: false,
       error: "",
-      success: "",
+      token: "{{ token }}" || localStorage.getItem("token"),
 
-      init() {
-        if (!this.token) {
-          window.location.href = "/login";
-        }
-        document.getElementById("logout-btn").addEventListener("click", (e) => {
-          e.preventDefault();
-          this.logout();
-        });
+      async init() {
+        try {
+          const r = await fetch("/api/v1/auth/me", {
+            headers: { Authorization: `Bearer ${this.token}` },
+          });
+          if (r.ok) {
+            const u = await r.json();
+            this.username = u.username || "";
+          }
+        } catch (_) {}
       },
 
-      async joinGroup() {
+      onCodeInput(e, idx) {
+        const val = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+        this.code[idx] = val.slice(0, 1);
+        e.target.value = this.code[idx];
+        if (val && idx < 7) {
+          const n = this.$refs[`cell${idx+1}`];
+          if (n) n.focus();
+        }
+      },
+      onCodeKey(e, idx) {
+        if (e.key === "Backspace" && !this.code[idx] && idx > 0) {
+          const p = this.$refs[`cell${idx-1}`];
+          if (p) p.focus();
+        }
+      },
+      onCodePaste(e) {
+        const text = (e.clipboardData || window.clipboardData)
+          .getData("text").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+        if (!text) return;
+        e.preventDefault();
+        for (let i = 0; i < 8; i++) this.code[i] = text[i] || "";
+        const f = Math.min(text.length, 7);
+        const c = this.$refs[`cell${f}`];
+        if (c) c.focus();
+      },
+
+      async submitCode() {
+        const codeStr = this.code.join("").trim();
+        if (codeStr.length < 6) return;
         this.loading = true;
         this.error = "";
-        this.success = "";
-
         try {
-          const response = await fetch("/api/v1/auth/join-group", {
+          const r = await fetch("/api/v1/invitations/join-group", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${this.token}`,
             },
-            body: JSON.stringify({ code: this.code }),
+            body: JSON.stringify({ code: codeStr }),
           });
-
-          if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.detail || "Failed to join group");
+          if (!r.ok) {
+            const d = await r.json().catch(() => ({}));
+            throw new Error(d.detail || "That code doesn't look right.");
           }
-
-          const data = await response.json();
-          this.success = data.message + " Redirecting to dashboard…";
-
-          setTimeout(() => { window.location.href = "/app"; }, 2000);
-        } catch (error) {
-          this.error = error.message || "An unexpected error occurred";
+          window.location.href = "/app";
+        } catch (err) {
+          this.error = err.message;
         } finally {
           this.loading = false;
         }
-      },
-
-      logout() {
-        localStorage.removeItem("token");
-        window.location.href = "/login";
       },
     };
   }

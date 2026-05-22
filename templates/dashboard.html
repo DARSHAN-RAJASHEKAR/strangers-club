@@ -1,10 +1,387 @@
-{% extends "base.html" %} {% block title %}Dashboard — Strangers Club{% endblock %} {% block nav_links %}
-<li class="text-xs text-muted hidden" id="user-meta">signed in</li>
-<li>
-  <a href="#" id="logout-btn" class="btn btn-outline" style="padding: 8px 16px; font-size: 13px; min-height: auto;">Logout</a>
-</li>
-{% endblock %} {% block content %}
+{% extends "base.html" %}
+{% block title %}The Club — Strangers Club{% endblock %}
 
+{% block content %}
+<div x-data="app()" x-init="init()">
+
+  <div class="app-shell">
+
+    <!-- ─────────────────── SIDEBAR ─────────────────── -->
+    <aside class="sidebar">
+
+      <!-- Brand -->
+      <div class="sidebar__brand">
+        <span class="monogram monogram--md">SC</span>
+        <div>
+          <div class="sidebar__brand-name">Strangers Club</div>
+          <div class="mono-meta" style="margin-top: 4px;">est. mmxxv · no. 0428</div>
+        </div>
+      </div>
+
+      <!-- Search -->
+      <div class="sidebar__search">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="11" cy="11" r="7" />
+          <path d="M21 21l-4.35-4.35" stroke-linecap="round" />
+        </svg>
+        <input type="text" placeholder="Find a group or member…" />
+      </div>
+
+      <!-- Connection status (subtle) -->
+      <div class="mono-meta" style="padding: 10px 22px 0; display:flex; align-items:center; gap:6px;">
+        <span x-show="isConnected" style="width:6px;height:6px;border-radius:50%;background:#5A7A52;"></span>
+        <span x-show="!isConnected" style="width:6px;height:6px;border-radius:50%;background:var(--muted);"></span>
+        <span x-text="isConnected ? 'connected' : 'offline'"></span>
+        <span x-show="messageQueue.length > 0" style="margin-left:auto;">
+          <span x-text="messageQueue.length"></span> queued
+        </span>
+      </div>
+
+      <!-- ── Meet-up groups ── -->
+      <div class="sidebar-section">
+        <div class="sidebar-section__head">
+          <span class="mono-meta">meet-up groups</span>
+          <button
+            @click="showCreateGroupModal = true"
+            title="New meet-up"
+            style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;color:var(--muted);border-radius:4px;border:1px solid var(--border-soft);"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <path d="M12 5v14M5 12h14" stroke-linecap="round" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="sidebar-list">
+        <template x-for="group in timeleftGroups" :key="group.id">
+          <div
+            class="item"
+            :class="{'active': selectedGroup && selectedGroup.id === group.id}"
+            @click="selectGroup(group)"
+          >
+            <span
+              class="avatar avatar--sm"
+              :style="{ background: avatarColor(group.name) }"
+              x-text="(group.name || '?').charAt(0).toUpperCase()"
+            ></span>
+            <div style="flex:1; min-width:0;">
+              <div class="item__name" x-text="group.name"></div>
+              <div class="item__meta" x-text="formatDate(group.meetup_date) || 'meet-up'"></div>
+            </div>
+            <span
+              x-show="group.unread_count > 0"
+              class="unread-pill"
+              x-text="group.unread_count"
+            ></span>
+          </div>
+        </template>
+        <div x-show="timeleftGroups.length === 0" class="text-sm text-muted" style="padding: 10px 12px;">
+          No meet-ups yet.
+          <span class="link link-accent" @click="showCreateGroupModal = true" style="cursor:pointer;">create one →</span>
+        </div>
+      </div>
+
+      <!-- ── General groups ── -->
+      <div class="sidebar-section" style="margin-top: 14px;">
+        <div class="sidebar-section__head">
+          <span class="mono-meta">general groups</span>
+          <a href="/join-group" class="mono-meta" style="color:var(--ink-2); cursor:pointer;">join</a>
+        </div>
+      </div>
+
+      <div class="sidebar-list">
+        <template x-for="group in generalGroups" :key="group.id">
+          <div
+            class="item"
+            :class="{'active': selectedGroup && selectedGroup.id === group.id}"
+            @click="selectGroup(group)"
+          >
+            <span class="item__hash">#</span>
+            <div class="item__name" x-text="group.name" style="font-size: 14px; color: var(--ink-2);"></div>
+            <span
+              x-show="group.unread_count > 0"
+              class="unread-pill"
+              x-text="group.unread_count"
+            ></span>
+          </div>
+        </template>
+      </div>
+
+      <!-- ── Invite a stranger ribbon ── -->
+      <div class="sidebar__foot">
+        <div class="ribbon-dark">
+          <div>
+            <div class="ribbon-dark__title">Invite a stranger</div>
+            <div class="sub">3 invitations left</div>
+          </div>
+          <button class="btn-pill" @click="generatePlatformInviteCode()">generate</button>
+        </div>
+
+        <!-- User strip -->
+        <div style="margin-top: 14px; display:flex; align-items:center; gap:10px; padding: 0 4px;">
+          <span
+            class="avatar avatar--sm"
+            :style="{ background: avatarColor(currentUser.username) }"
+            x-text="(currentUser.username || '?').charAt(0).toUpperCase()"
+          ></span>
+          <div style="flex:1; min-width:0;">
+            <div style="font-family: var(--f-serif); font-size: 14px; color: var(--ink); line-height: 1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"
+                 x-text="currentUser.username || 'signed in'"></div>
+            <div class="mono-meta" style="margin-top: 2px;" x-text="currentUser.is_superuser ? 'admin' : 'member'"></div>
+          </div>
+          <a href="#" @click.prevent="logout()" class="mono-meta" style="color:var(--muted);">leave</a>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ─────────────────── MAIN CHAT ─────────────────── -->
+    <section class="chat-area">
+
+      <!-- Empty state -->
+      <div x-show="!selectedGroup" class="empty-state">
+        <div class="empty-state__inner">
+          <span class="monogram monogram--lg" style="margin: 0 auto 22px; display:inline-flex;">SC</span>
+          <div class="eyebrow mb-3">good evening</div>
+          <h2 class="title-lg">
+            Pick a group<br />
+            <span class="italic-accent">from the left.</span>
+          </h2>
+          <p class="text-sm text-muted" style="margin-top: 12px; max-width: 360px; margin-left:auto; margin-right:auto;">
+            Or start a new meet-up to bring together the strangers from your last evening.
+          </p>
+          <button class="btn btn-primary" @click="showCreateGroupModal = true" style="margin-top: 24px;">
+            New meet-up
+          </button>
+        </div>
+      </div>
+
+      <!-- Chat -->
+      <template x-if="selectedGroup">
+        <div style="display:flex; flex-direction:column; height: 100vh;">
+
+          <!-- Header -->
+          <div class="chat-header">
+            <span
+              class="avatar avatar--xl"
+              :style="{ background: avatarColor(selectedGroup.name) }"
+              x-text="(selectedGroup.name || '?').charAt(0).toUpperCase()"
+            ></span>
+            <div style="flex:1; min-width:0;">
+              <div class="chat-header__title" x-text="selectedGroup.name"></div>
+              <div class="chat-header__meta">
+                <span class="mono-meta" x-text="`${(selectedGroup.member_count || 0)} members`"></span>
+                <span class="mono-meta dot">•</span>
+                <span class="mono-meta" x-text="selectedGroup.meetup_date ? formatMeetupDate(selectedGroup.meetup_date) : (selectedGroup.is_general ? 'general group' : 'no date set')"></span>
+              </div>
+            </div>
+            <button
+              x-show="isGroupOwner && !selectedGroup.is_general"
+              @click="generateGroupInviteCode(selectedGroup.id)"
+              class="btn btn-outline btn-mono"
+              style="height: 36px; padding: 0 14px;"
+            >
+              get invite code
+            </button>
+            <button
+              x-show="!isGroupOwner"
+              @click="leaveGroup(selectedGroup.id)"
+              class="btn btn-outline btn-mono"
+              style="height: 36px; padding: 0 14px; color: var(--accent); border-color: var(--accent);"
+            >
+              leave
+            </button>
+          </div>
+
+          <!-- Messages -->
+          <div id="messages-container" class="messages-scroll">
+
+            <div x-show="messages.length === 0" style="text-align:center; padding: 48px 16px; color: var(--muted);">
+              <div class="eyebrow mb-3">silence</div>
+              <p style="font-family: var(--f-serif); font-style: italic; font-size: 22px; color: var(--ink-2);">
+                Be the first to say something.
+              </p>
+            </div>
+
+            <div class="day-divider"><span class="mono-meta">yesterday</span></div>
+
+            <template x-for="(message, idx) in messages" :key="message.id || message.tempId">
+              <div class="msg-row" :class="(message.author_id === currentUser.id) ? 'mine' : ''">
+                <template x-if="(message.author_id !== currentUser.id) && shouldShowAvatar(idx)">
+                  <span
+                    class="avatar avatar--md"
+                    :style="{ background: avatarColor(message.author && message.author.username) }"
+                    x-text="(message.author && message.author.username ? message.author.username.charAt(0) : '?').toUpperCase()"
+                  ></span>
+                </template>
+                <template x-if="(message.author_id !== currentUser.id) && !shouldShowAvatar(idx)">
+                  <span style="width: 32px; flex-shrink: 0;"></span>
+                </template>
+
+                <div class="msg-stack" :class="(message.author_id === currentUser.id) ? 'mine' : ''">
+                  <div x-show="(message.author_id !== currentUser.id) && shouldShowAvatar(idx)" class="msg-author">
+                    <span class="name" :style="{ color: avatarColor(message.author && message.author.username) }"
+                          x-text="message.author && message.author.username ? message.author.username : 'unknown'"></span>
+                    <span class="name" style="color: var(--muted);"
+                          x-text="new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })"></span>
+                  </div>
+                  <div class="msg-bubble" :class="(message.author_id === currentUser.id) ? 'mine' : 'others'">
+                    <span x-text="message.content"></span>
+                  </div>
+                  <div x-show="(message.author_id === currentUser.id)" class="msg-time"
+                       x-text="new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })"></div>
+                </div>
+              </div>
+            </template>
+
+            <!-- Typing indicator -->
+            <div x-show="typingUsers.length > 0" class="typing">
+              <span class="avatar avatar--sm" style="background: var(--surface); color: var(--muted);">·</span>
+              <div class="typing__bubble">
+                <span></span><span></span><span></span>
+              </div>
+              <span class="mono-meta">
+                <span x-text="typingUsers.join(', ')"></span>
+                <span x-text="typingUsers.length === 1 ? ' is typing…' : ' are typing…'"></span>
+              </span>
+            </div>
+          </div>
+
+          <!-- Composer -->
+          <div class="composer">
+            <form @submit.prevent="sendMessage" style="flex:1; display:flex; gap:12px; align-items:center;">
+              <input
+                type="text"
+                x-model="newMessage"
+                @focus="onMessageInputFocus"
+                @blur="onMessageInputBlur"
+                @keydown="onMessageInputKeydown"
+                class="composer__input"
+                placeholder="Say something thoughtful…"
+                autocomplete="off"
+              />
+              <button type="submit" :disabled="!newMessage.trim()" class="composer__send" title="Send">
+                Send
+                <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+                  <path d="M2 9l14-6-5 14-3-6-6-2z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none"/>
+                </svg>
+              </button>
+            </form>
+          </div>
+        </div>
+      </template>
+    </section>
+
+    <!-- ─────────────────── RIGHT RAIL ─────────────────── -->
+    <aside class="right-rail" x-show="selectedGroup">
+
+      <template x-if="selectedGroup">
+        <div>
+          <div class="mono-meta">this meet-up</div>
+          <div class="meetup-name" x-text="selectedGroup.name + '.'"></div>
+          <div class="meetup-date" x-text="selectedGroup.meetup_date ? formatMeetupDateLong(selectedGroup.meetup_date) : 'No date set'"></div>
+          <div class="meetup-where" x-text="selectedGroup.description || (selectedGroup.is_general ? 'A general group' : 'Add a description')"></div>
+
+          <div class="rule rule-soft" style="margin: 20px 0;"></div>
+
+          <div class="mono-meta">members</div>
+          <div style="margin-top: 12px; display:flex; flex-direction:column; gap: 10px;">
+            <template x-for="m in (members || []).slice(0, 8)" :key="m.id">
+              <div class="member-row">
+                <span
+                  class="avatar avatar--sm"
+                  :style="{ background: avatarColor(m.username) }"
+                  x-text="(m.username || '?').charAt(0).toUpperCase()"
+                ></span>
+                <div style="flex:1;">
+                  <div class="name" x-text="m.username + (m.id === currentUser.id ? ' (you)' : '')"></div>
+                  <div class="meta" x-text="m.id === selectedGroup.owner_id ? 'host' : (m.joined_at ? 'joined ' + formatDate(m.joined_at) : 'member')"></div>
+                </div>
+              </div>
+            </template>
+            <div x-show="!members || members.length === 0" class="text-sm text-muted">
+              Just you, so far.
+            </div>
+          </div>
+
+          <div class="rule rule-soft" style="margin: 20px 0;"></div>
+
+          <div class="mono-meta">house rules</div>
+          <p class="house-rules" style="margin-top: 8px;">
+            Be kind. Keep it private. Show up.
+          </p>
+        </div>
+      </template>
+    </aside>
+  </div>
+
+  <!-- ───── Create Group Modal ───── -->
+  <div x-show="showCreateGroupModal" class="modal-backdrop" x-cloak>
+    <div class="modal-card">
+      <div class="eyebrow mb-3" x-text="newGroup.is_general ? 'admin · platform-wide' : 'new meet-up'"></div>
+      <h3 class="title-lg" x-text="newGroup.is_general ? 'New general group.' : 'New meet-up group.'"></h3>
+
+      <form @submit.prevent="createGroup" style="margin-top: 20px; display:flex; flex-direction:column; gap: 16px;">
+        <div class="form-group">
+          <label class="form-label">group name</label>
+          <input type="text" x-model="newGroup.name" required class="form-input" placeholder="Spago · dinner crew" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">description (optional)</label>
+          <textarea x-model="newGroup.description" rows="3" class="form-input" placeholder="What's this group for?"></textarea>
+        </div>
+        <div class="form-group" x-show="!newGroup.is_general">
+          <label class="form-label">meet-up date (optional)</label>
+          <input type="datetime-local" x-model="newGroup.meetup_date" class="form-input" style="font-size: 16px;" />
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap: 10px; padding-top: 8px;">
+          <button type="button" @click="showCreateGroupModal = false; resetNewGroup()" class="btn btn-outline">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create group</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ───── Group Invite Code Modal ───── -->
+  <div x-show="showGroupInviteModal" class="modal-backdrop" x-cloak>
+    <div class="modal-card">
+      <div class="eyebrow mb-3">group pass</div>
+      <h3 class="title-lg">Share this code.</h3>
+      <p class="text-sm text-muted" style="margin: 12px 0 16px;">
+        Anyone with this code can join your meet-up. Treat it like a key.
+      </p>
+      <div class="invite-code-display"><code x-text="groupInviteCode"></code></div>
+      <div style="display:flex; justify-content:flex-end; gap:10px; padding-top: 18px;">
+        <button type="button" @click="showGroupInviteModal = false" class="btn btn-outline">Close</button>
+        <button type="button" @click="copyToClipboard(groupInviteCode)" class="btn btn-primary">Copy code</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───── Platform Invite Code Modal ───── -->
+  <div x-show="showPlatformInviteModal" class="modal-backdrop" x-cloak>
+    <div class="modal-card">
+      <div class="eyebrow mb-3">platform invite</div>
+      <h3 class="title-lg">Invite a new stranger.</h3>
+      <p class="text-sm text-muted" style="margin: 12px 0 16px;">
+        This code lets them register at Strangers Club. They'll show up
+        under "members" once they're in.
+      </p>
+      <div class="invite-code-display"><code x-text="platformInviteCode"></code></div>
+      <div style="display:flex; justify-content:flex-end; gap:10px; padding-top: 18px;">
+        <button type="button" @click="showPlatformInviteModal = false" class="btn btn-outline">Close</button>
+        <button type="button" @click="copyToClipboard(platformInviteCode)" class="btn btn-primary">Copy code</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<style>[x-cloak] { display: none !important; }</style>
+
+{% endblock %}
+
+{% block extra_js %}
 <script>
   function app() {
     return {
@@ -13,6 +390,7 @@
       timeleftGroups: [],
       generalGroups: [],
       messages: [],
+      members: [],
       selectedGroup: null,
       selectedChannel: null,
       newMessage: "",
@@ -26,79 +404,64 @@
       groupInviteCode: "",
       platformInviteCode: "",
       isGroupOwner: false,
-      timeleftSectionExpanded: true,
-      generalSectionExpanded: true,
       typingUsers: [],
       typingTimeout: null,
-      newGroup: {
-        name: "",
-        description: "",
-        meetup_date: null,
-        is_general: false,
-      },
+      newGroup: { name: "", description: "", meetup_date: null, is_general: false },
 
       async init() {
-        if (!this.token) {
-          window.location.href = "/login";
-          return;
-        }
-
+        if (!this.token) { window.location.href = "/login"; return; }
         localStorage.setItem("token", this.token);
-
         try {
           await this.fetchCurrentUser();
-
           if (!this.currentUser.phone_verified && !this.currentUser.is_superuser) {
-            console.log("User needs phone verification, redirecting...");
-            window.location.href = `/verify-phone`;
-            return;
+            window.location.href = `/verify-phone`; return;
           }
-
           await this.fetchGroups();
           this.loadLocalMessages();
-
-          document.getElementById("logout-btn").addEventListener("click", (e) => {
-            e.preventDefault();
-            this.logout();
-          });
-        } catch (error) {
-          console.error("Initialization error:", error);
-          if (error.status === 401) { this.logout(); }
+        } catch (e) {
+          console.error("Init error:", e);
+          if (e.status === 401) this.logout();
         } finally {
           this.loading = false;
         }
       },
 
       async fetchCurrentUser() {
-        const response = await fetch("/api/v1/auth/me", {
-          headers: { Authorization: `Bearer ${this.token}` },
-        });
-        if (!response.ok) throw { status: response.status, message: "Failed to fetch user data" };
-        this.currentUser = await response.json();
+        const r = await fetch("/api/v1/auth/me", { headers: { Authorization: `Bearer ${this.token}` } });
+        if (!r.ok) throw { status: r.status };
+        this.currentUser = await r.json();
       },
 
       async fetchGroups() {
-        const response = await fetch("/api/v1/groups", {
-          headers: { Authorization: `Bearer ${this.token}` },
-        });
-        if (!response.ok) throw { status: response.status, message: "Failed to fetch groups" };
-        const allGroups = await response.json();
-        this.timeleftGroups = allGroups.filter((g) => !g.is_general);
-        this.generalGroups = allGroups.filter((g) => g.is_general);
+        const r = await fetch("/api/v1/groups", { headers: { Authorization: `Bearer ${this.token}` } });
+        if (!r.ok) throw { status: r.status };
+        const all = await r.json();
+        this.timeleftGroups = all.filter(g => !g.is_general);
+        this.generalGroups  = all.filter(g =>  g.is_general);
       },
 
       async selectGroup(group) {
         this.selectedGroup = group;
         this.selectedChannel = null;
         this.messages = [];
+        this.members = [];
         this.isGroupOwner = group.owner_id === this.currentUser.id;
         this.closeWebSocket();
 
-        const response = await fetch(`/api/v1/groups/${group.id}/channels`, {
+        // Fetch members
+        try {
+          const mr = await fetch(`/api/v1/groups/${group.id}/members`, {
+            headers: { Authorization: `Bearer ${this.token}` },
+          });
+          if (mr.ok) this.members = await mr.json();
+        } catch (_) {}
+
+        // Fetch channels, pick first, open WS
+        const r = await fetch(`/api/v1/groups/${group.id}/channels`, {
           headers: { Authorization: `Bearer ${this.token}` },
         });
-        if (response.ok) {
-          const channels = await response.json();
+        if (r.ok) {
+          const channels = await r.json();
           if (channels.length > 0) {
             this.selectedChannel = channels[0];
             await this.fetchMessages(this.selectedChannel.id);
@@ -108,310 +471,193 @@
       },
 
       async fetchMessages(channelId) {
-        const response = await fetch(`/api/v1/messages/channel/${channelId}`, {
+        const r = await fetch(`/api/v1/messages/channel/${channelId}`, {
           headers: { Authorization: `Bearer ${this.token}` },
         });
-        if (!response.ok) {
-          console.error("Failed to fetch messages:", response.statusText);
-          return;
-        }
-        const serverMessages = await response.json();
-        this.messages = serverMessages.map((message) => ({
-          ...message,
-          isMine: message.author_id === this.currentUser.id,
-        }));
+        if (!r.ok) return;
+        const server = await r.json();
+        this.messages = server.map(m => ({ ...m, isMine: m.author_id === this.currentUser.id }));
         this.saveLocalMessages();
-        this.$nextTick(() => { this.scrollToBottom(); });
+        this.$nextTick(() => this.scrollToBottom());
       },
 
       setupWebSocket(channelId) {
-        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-        const host = window.location.host;
-        const wsUrl = `${protocol}//${host}/api/v1/messages/ws/${channelId}?token=${this.token}`;
-
+        const proto = location.protocol === "https:" ? "wss:" : "ws:";
+        const wsUrl = `${proto}//${location.host}/api/v1/messages/ws/${channelId}?token=${this.token}`;
         this.socket = new WebSocket(wsUrl);
-
-        this.socket.onopen = () => {
-          this.isConnected = true;
-          this.processMessageQueue();
+        this.socket.onopen = () => { this.isConnected = true; this.processMessageQueue(); };
+        this.socket.onmessage = (ev) => {
+          try { this.handleWebSocketMessage(JSON.parse(ev.data)); } catch (e) {}
         };
-
-        this.socket.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            this.handleWebSocketMessage(data);
-          } catch (error) {
-            console.error("Error parsing message:", error);
+        this.socket.onclose = (ev) => {
+          this.isConnected = false;
+          if (ev.code !== 1000 && this.selectedChannel) {
+            setTimeout(() => { if (this.selectedChannel) this.setupWebSocket(this.selectedChannel.id); }, 3000);
           }
         };
-
-        this.socket.onclose = (event) => {
-          this.isConnected = false;
-          if (event.code !== 1000 && this.selectedChannel) {
-            setTimeout(() => {
-              if (this.selectedChannel) {
-                this.setupWebSocket(this.selectedChannel.id);
-              }
-            }, 3000);
-          }
-        };
-
-        this.socket.onerror = (error) => {
-          console.error("Real-time chat error:", error);
-          this.isConnected = false;
-        };
+        this.socket.onerror = () => { this.isConnected = false; };
       },
 
       handleWebSocketMessage(data) {
         switch (data.type) {
           case "connection_established": break;
-          case "new_message": this.addMessage(data); break;
-          case "message_sent": this.updateMessageId(data.tempId || data.id, data); break;
-          case "typing": this.handleTypingIndicator(data); break;
-          case "error": console.error("Chat error:", data.message); break;
+          case "new_message":    this.addMessage(data); break;
+          case "message_sent":   this.updateMessageId(data.tempId || data.id, data); break;
+          case "typing":         this.handleTypingIndicator(data); break;
+          case "error":          console.error("Chat error:", data.message); break;
         }
       },
 
-      addMessage(messageData) {
-        const message = {
-          id: messageData.id,
-          tempId: messageData.tempId,
-          content: messageData.content,
-          author: messageData.author,
-          author_id: messageData.author?.id || messageData.author_id,
-          channel_id: messageData.channel_id,
-          created_at: messageData.created_at,
-          isMine: messageData.author?.id === this.currentUser?.id,
+      addMessage(d) {
+        const m = {
+          id: d.id, tempId: d.tempId, content: d.content,
+          author: d.author, author_id: d.author?.id || d.author_id,
+          channel_id: d.channel_id, created_at: d.created_at,
+          isMine: d.author?.id === this.currentUser?.id,
         };
-        this.messages.push(message);
+        this.messages.push(m);
         this.saveLocalMessages();
-        this.$nextTick(() => { this.scrollToBottom(); });
+        this.$nextTick(() => this.scrollToBottom());
       },
 
       updateMessageId(messageId, newData) {
-        const message = this.messages.find((m) => m.id === messageId || m.tempId === messageId);
-        if (message) {
-          if (newData) {
-            message.id = newData.id;
-            message.created_at = newData.created_at;
-          }
-          this.saveLocalMessages();
-        }
+        const m = this.messages.find(x => x.id === messageId || x.tempId === messageId);
+        if (m && newData) { m.id = newData.id; m.created_at = newData.created_at; this.saveLocalMessages(); }
       },
 
-      generateTempId() {
-        return "temp_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
-      },
+      generateTempId() { return "temp_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9); },
 
       async sendMessage() {
         if (!this.newMessage.trim() || !this.selectedChannel) return;
-
-        const messageContent = this.newMessage.trim();
+        const content = this.newMessage.trim();
         const tempId = this.generateTempId();
-
-        const optimisticMessage = {
-          tempId: tempId,
-          content: messageContent,
+        const optimistic = {
+          tempId, content,
           author: { id: this.currentUser.id, username: this.currentUser.username },
           author_id: this.currentUser.id,
           channel_id: this.selectedChannel.id,
           created_at: new Date().toISOString(),
           isMine: true,
         };
-
-        this.messages.push(optimisticMessage);
+        this.messages.push(optimistic);
         this.newMessage = "";
         this.saveLocalMessages();
-        this.$nextTick(() => { this.scrollToBottom(); });
+        this.$nextTick(() => this.scrollToBottom());
 
-        const messageToSend = {
-          type: "new_message",
-          tempId: tempId,
-          content: messageContent,
-          channel_id: this.selectedChannel.id,
-        };
-
+        const payload = { type: "new_message", tempId, content, channel_id: this.selectedChannel.id };
         if (this.isConnected) {
-          try {
-            this.socket.send(JSON.stringify(messageToSend));
-          } catch (error) {
-            this.queueMessage(messageToSend);
-          }
+          try { this.socket.send(JSON.stringify(payload)); }
+          catch (e) { this.queueMessage(payload); }
         } else {
-          this.queueMessage(messageToSend);
+          this.queueMessage(payload);
         }
       },
 
-      queueMessage(message) { this.messageQueue.push(message); },
-
+      queueMessage(m) { this.messageQueue.push(m); },
       processMessageQueue() {
-        if (this.messageQueue.length === 0) return;
-        const queue = [...this.messageQueue];
-        this.messageQueue = [];
-        queue.forEach((message) => {
-          try {
-            this.socket.send(JSON.stringify(message));
-          } catch (error) {
-            this.messageQueue.push(message);
-          }
-        });
+        if (!this.messageQueue.length) return;
+        const q = [...this.messageQueue]; this.messageQueue = [];
+        q.forEach(m => { try { this.socket.send(JSON.stringify(m)); } catch (e) { this.messageQueue.push(m); }});
       },
 
       saveLocalMessages() {
         if (!this.selectedChannel) return;
-        const key = `messages_${this.selectedChannel.id}`;
-        try {
-          const messagesToSave = this.messages.map((message) => ({
-            ...message,
-            author_id: message.author_id || message.author?.id,
-            isMine: message.author_id === this.currentUser.id,
-          }));
-          localStorage.setItem(key, JSON.stringify(messagesToSave));
-        } catch (error) {
-          console.error("Failed to save messages locally:", error);
-        }
+        try { localStorage.setItem(`messages_${this.selectedChannel.id}`,
+          JSON.stringify(this.messages.map(m => ({...m, author_id: m.author_id || m.author?.id, isMine: m.author_id === this.currentUser.id})))); } catch (e) {}
       },
-
       loadLocalMessages() {
         if (!this.selectedChannel) return;
-        const key = `messages_${this.selectedChannel.id}`;
         try {
-          const cached = localStorage.getItem(key);
-          if (cached) {
-            const cachedMessages = JSON.parse(cached);
-            this.messages = cachedMessages.map((message) => ({
-              ...message,
-              author_id: message.author_id || message.author?.id,
-              isMine: message.author_id === this.currentUser.id,
-            }));
-          }
-        } catch (error) {
-          console.error("Failed to load cached messages:", error);
-        }
+          const c = localStorage.getItem(`messages_${this.selectedChannel.id}`);
+          if (c) this.messages = JSON.parse(c).map(m => ({...m, author_id: m.author_id || m.author?.id, isMine: m.author_id === this.currentUser.id}));
+        } catch (e) {}
       },
 
-      handleTypingIndicator(data) {
-        if (data.is_typing) {
-          if (!this.typingUsers.includes(data.user)) {
-            this.typingUsers.push(data.user);
-          }
-        } else {
-          this.typingUsers = this.typingUsers.filter((user) => user !== data.user);
-        }
+      handleTypingIndicator(d) {
+        if (d.is_typing) { if (!this.typingUsers.includes(d.user)) this.typingUsers.push(d.user); }
+        else { this.typingUsers = this.typingUsers.filter(u => u !== d.user); }
       },
-
-      sendTypingIndicator(isTyping) {
+      sendTypingIndicator(t) {
         if (this.typingTimeout) clearTimeout(this.typingTimeout);
-        if (this.isConnected) {
-          this.socket.send(JSON.stringify({ type: "typing", is_typing: isTyping }));
-        }
-        if (isTyping) {
-          this.typingTimeout = setTimeout(() => {
-            if (this.isConnected) {
-              this.socket.send(JSON.stringify({ type: "typing", is_typing: false }));
-            }
-          }, 3000);
-        }
+        if (this.isConnected) try { this.socket.send(JSON.stringify({ type: "typing", is_typing: t })); } catch (e) {}
+        if (t) this.typingTimeout = setTimeout(() => {
+          if (this.isConnected) try { this.socket.send(JSON.stringify({ type: "typing", is_typing: false })); } catch (e) {}
+        }, 3000);
       },
 
       closeWebSocket() {
-        if (this.socket) {
-          this.socket.close(1000);
-          this.socket = null;
-          this.isConnected = false;
-        }
+        if (this.socket) { this.socket.close(1000); this.socket = null; this.isConnected = false; }
       },
-
       scrollToBottom() {
-        const container = document.getElementById("messages-container");
-        if (container) container.scrollTop = container.scrollHeight;
+        const c = document.getElementById("messages-container");
+        if (c) c.scrollTop = c.scrollHeight;
       },
 
       async createGroup() {
         try {
-          const response = await fetch("/api/v1/groups", {
+          const r = await fetch("/api/v1/groups", {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${this.token}`,
-            },
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.token}` },
             body: JSON.stringify(this.newGroup),
           });
-          if (!response.ok) throw new Error("Failed to create group");
-          const group = await response.json();
-          if (group.is_general) {
-            this.generalGroups.push(group);
-          } else {
-            this.timeleftGroups.push(group);
-          }
+          if (!r.ok) throw new Error("Failed to create group");
+          const g = await r.json();
+          (g.is_general ? this.generalGroups : this.timeleftGroups).push(g);
           this.showCreateGroupModal = false;
           this.resetNewGroup();
-          await this.selectGroup(group);
-        } catch (error) {
-          console.error("Error creating group:", error);
-          alert("Failed to create group. Please try again.");
-        }
+          await this.selectGroup(g);
+        } catch (e) { alert("Failed to create group. Please try again."); }
+      },
+
+      async leaveGroup(id) {
+        const g = [...this.timeleftGroups, ...this.generalGroups].find(x => x.id === id);
+        if (!confirm(`Leave "${g ? g.name : 'this group'}"? You won't be able to rejoin without a new invite code.`)) return;
+        try {
+          const r = await fetch(`/api/v1/groups/${id}/leave`, {
+            method: "POST", headers: { Authorization: `Bearer ${this.token}` },
+          });
+          if (!r.ok) { const d = await r.json(); throw new Error(d.detail || "Failed to leave"); }
+          this.timeleftGroups = this.timeleftGroups.filter(x => x.id !== id);
+          this.generalGroups  = this.generalGroups.filter(x => x.id !== id);
+          if (this.selectedGroup && this.selectedGroup.id === id) {
+            this.selectedGroup = null; this.selectedChannel = null; this.messages = [];
+          }
+        } catch (e) { alert(e.message); }
       },
 
       async generateGroupInviteCode(groupId) {
         try {
-          const response = await fetch(
-            `/api/v1/invitations/generate-new-code/${groupId}`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${this.token}`,
-              },
-            }
-          );
-          if (!response.ok) throw new Error("Failed to generate invite code");
-          const invitation = await response.json();
-          this.groupInviteCode = invitation.code;
+          const r = await fetch(`/api/v1/invitations/generate-new-code/${groupId}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.token}` },
+          });
+          if (!r.ok) throw new Error("Failed to generate");
+          const inv = await r.json();
+          this.groupInviteCode = inv.code;
           this.showGroupInviteModal = true;
-        } catch (error) {
-          console.error("Error generating invite code:", error);
-          alert("Failed to generate invite code. Please try again.");
-        }
+        } catch (e) { alert("Failed to generate invite code."); }
       },
 
       async generatePlatformInviteCode() {
         try {
-          const response = await fetch("/api/v1/invitations/generate-platform-code", {
+          const r = await fetch("/api/v1/invitations/generate-platform-code", {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${this.token}`,
-            },
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.token}` },
           });
-          if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.detail || "Failed to generate platform invite code");
-          }
-          const invitation = await response.json();
-          this.platformInviteCode = invitation.code;
+          if (!r.ok) { const d = await r.json(); throw new Error(d.detail || "Failed"); }
+          const inv = await r.json();
+          this.platformInviteCode = inv.code;
           this.showPlatformInviteModal = true;
-        } catch (error) {
-          console.error("Error generating platform invite code:", error);
-          alert(`Failed to generate platform invite code: ${error.message}`);
-        }
+        } catch (e) { alert(`Failed: ${e.message}`); }
       },
 
       copyToClipboard(text) {
-        navigator.clipboard
-          .writeText(text)
-          .then(() => alert("Invite code copied to clipboard!"))
-          .catch(() => alert("Failed to copy invite code"));
+        navigator.clipboard.writeText(text)
+          .then(() => alert("Code copied!"))
+          .catch(() => alert("Failed to copy."));
       },
 
-      toggleSection(section) {
-        if (section === "timeleft") this.timeleftSectionExpanded = !this.timeleftSectionExpanded;
-        else if (section === "general") this.generalSectionExpanded = !this.generalSectionExpanded;
-      },
-
-      resetNewGroup() {
-        this.newGroup = { name: "", description: "", meetup_date: null, is_general: false };
-      },
+      resetNewGroup() { this.newGroup = { name: "", description: "", meetup_date: null, is_general: false }; },
 
       logout() {
         localStorage.removeItem("token");
@@ -419,10 +665,14 @@
         window.location.href = "/logout";
       },
 
-      onMessageInputFocus() { this.sendTypingIndicator(true); },
-      onMessageInputBlur() { this.sendTypingIndicator(false); },
-      onMessageInputKeydown() {
-        if (!this.typingTimeout) this.sendTypingIndicator(true);
+      onMessageInputFocus()   { this.sendTypingIndicator(true);  },
+      onMessageInputBlur()    { this.sendTypingIndicator(false); },
+      onMessageInputKeydown() { if (!this.typingTimeout) this.sendTypingIndicator(true); },
+
+      shouldShowAvatar(idx) {
+        if (idx === 0) return true;
+        const cur = this.messages[idx], prev = this.messages[idx - 1];
+        return prev.author_id !== cur.author_id;
       },
 
       avatarColor(name) {
@@ -432,393 +682,26 @@
         for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
         return palette[h % palette.length];
       },
+
+      formatDate(iso) {
+        if (!iso) return "";
+        const d = new Date(iso);
+        if (isNaN(d)) return "";
+        return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      },
+      formatMeetupDate(iso) {
+        if (!iso) return "";
+        const d = new Date(iso);
+        if (isNaN(d)) return "";
+        return `booking ${d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} · ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+      },
+      formatMeetupDateLong(iso) {
+        if (!iso) return "";
+        const d = new Date(iso);
+        if (isNaN(d)) return "";
+        return d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+      },
     };
   }
 </script>
-
-<div x-data="app()" x-init="init()" class="app-container" style="padding: 0;">
-  <div class="dashboard-layout">
-    <!-- Sidebar -->
-    <aside class="sidebar">
-      <!-- Connection + user meta -->
-      <div class="sidebar-header">
-        <div class="flex items-center" style="gap: 8px;">
-          <span class="status-indicator" :class="isConnected ? 'status-online' : 'status-offline'" style="margin-right: 0;"></span>
-          <span x-text="isConnected ? 'connected' : 'offline'"></span>
-        </div>
-        <span x-show="messageQueue.length > 0" class="text-yellow-400" style="font-size: 10px;">
-          📬 <span x-text="messageQueue.length"></span> queued
-        </span>
-      </div>
-
-      <!-- Platform invite (admin/owner) -->
-      <div style="padding: 14px 14px 8px;">
-        <button
-          @click="generatePlatformInviteCode()"
-          class="btn btn-outline btn-full"
-          style="justify-content: flex-start; gap: 10px; padding: 12px 14px; font-size: 13px;"
-          title="Invite a new user to Strangers Club"
-        >
-          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path>
-          </svg>
-          <span style="text-align: left; flex: 1;">Invite a stranger</span>
-          <span class="eyebrow" style="font-size: 9.5px;">platform</span>
-        </button>
-      </div>
-
-      <!-- Join an existing group -->
-      <div style="padding: 0 14px 8px;">
-        <a href="/join-group"
-          class="btn btn-outline btn-full"
-          style="justify-content: flex-start; gap: 10px; padding: 12px 14px; font-size: 13px;"
-        >
-          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
-          </svg>
-          <span>Join with a code</span>
-        </a>
-      </div>
-
-      <!-- ────── Timeleft Meet-Up Groups ────── -->
-      <div class="border-t">
-        <div class="section-header cursor-pointer" @click="toggleSection('timeleft')">
-          <div class="flex items-center" style="gap: 6px;">
-            <svg
-              class="h-4 w-4 transition-transform"
-              :class="{'rotate-90': timeleftSectionExpanded}"
-              fill="currentColor" viewBox="0 0 20 20"
-            >
-              <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path>
-            </svg>
-            <span>Meet-up groups</span>
-          </div>
-          <button
-            @click.stop="showCreateGroupModal = true"
-            title="Create a new meet-up group"
-            style="display:flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:6px; color: var(--muted);"
-          >
-            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-            </svg>
-          </button>
-        </div>
-
-        <div x-show="timeleftSectionExpanded" class="list-container">
-          <template x-for="group in timeleftGroups" :key="group.id">
-            <div
-              class="list-item"
-              :class="{'active': selectedGroup && selectedGroup.id === group.id}"
-              style="display: flex; align-items: center;"
-            >
-              <a href="#" @click.prevent="selectGroup(group)" class="list-item-title flex items-center" style="gap: 10px; flex: 1; min-width: 0;">
-                <span
-                  class="avatar-initial"
-                  :style="{ width: '28px', height: '28px', fontSize: '13px', background: avatarColor(group.name) }"
-                  x-text="(group.name || '#').charAt(0).toUpperCase()"
-                ></span>
-                <span x-text="group.name" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></span>
-              </a>
-              <button
-                x-show="group.owner_id === currentUser.id"
-                @click="generateGroupInviteCode(group.id)"
-                class="text-muted"
-                title="Get invite code"
-                style="margin-left: 6px; padding: 4px;"
-              >
-                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path>
-                </svg>
-              </button>
-            </div>
-          </template>
-
-          <div x-show="timeleftGroups.length === 0" class="text-muted text-xs" style="padding: 14px 18px;">
-            No meet-up groups yet. <span style="color: var(--accent); cursor: pointer;" @click="showCreateGroupModal = true">Create one →</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- ────── General Groups ────── -->
-      <div class="border-t">
-        <div class="section-header cursor-pointer" @click="toggleSection('general')">
-          <div class="flex items-center" style="gap: 6px;">
-            <svg
-              class="h-4 w-4 transition-transform"
-              :class="{'rotate-90': generalSectionExpanded}"
-              fill="currentColor" viewBox="0 0 20 20"
-            >
-              <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path>
-            </svg>
-            <span>General groups</span>
-          </div>
-          <button
-            x-show="currentUser && currentUser.is_superuser"
-            @click.stop="() => { newGroup.is_general = true; showCreateGroupModal = true; }"
-            title="Create a new general group (admin only)"
-            style="display:flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:6px; color: var(--muted);"
-          >
-            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-            </svg>
-          </button>
-        </div>
-
-        <div x-show="generalSectionExpanded" class="list-container">
-          <template x-for="group in generalGroups" :key="group.id">
-            <a href="#" @click.prevent="selectGroup(group)"
-              class="list-item"
-              :class="{'active': selectedGroup && selectedGroup.id === group.id}"
-              style="display: flex; align-items: center; gap: 10px;"
-            >
-              <span class="text-muted" style="font-family: var(--f-mono); font-size: 14px;">#</span>
-              <span class="list-item-title" x-text="group.name"></span>
-            </a>
-          </template>
-
-          <div x-show="generalGroups.length === 0" class="text-muted text-xs" style="padding: 12px 18px;">
-            No general groups available.
-          </div>
-        </div>
-      </div>
-
-      <div style="flex: 1;"></div>
-
-      <!-- User mini-strip -->
-      <div style="padding: 12px 14px; border-top: 1px solid var(--border-soft); display: flex; align-items: center; gap: 10px;">
-        <span class="avatar-initial" style="width: 30px; height: 30px; font-size: 14px;" x-text="(currentUser.username || '?').charAt(0).toUpperCase()"></span>
-        <div style="flex: 1; min-width: 0;">
-          <div style="font-family: var(--f-serif); font-size: 15px; color: var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" x-text="currentUser.username || 'signed in'"></div>
-          <div class="eyebrow" style="font-size: 9.5px;" x-text="currentUser.is_superuser ? 'admin' : 'member'"></div>
-        </div>
-      </div>
-    </aside>
-
-    <!-- Main chat area -->
-    <section class="chat-area">
-      <!-- Welcome -->
-      <div
-        x-show="!selectedGroup"
-        class="h-full flex flex-col items-center justify-center text-center"
-        style="padding: 24px;"
-      >
-        <div style="max-width: 460px;">
-          <div class="eyebrow mb-4">welcome back</div>
-          <h2 class="title-lg">
-            Pick a group<br /><em>from the left.</em>
-          </h2>
-          <p class="text-sm text-muted" style="margin-top: 12px; line-height: 1.6;">
-            Or create a new meet-up to bring together the strangers from your last evening.
-          </p>
-          <button
-            class="btn btn-primary"
-            @click="showCreateGroupModal = true"
-            style="margin-top: 24px;"
-          >
-            New meet-up
-          </button>
-        </div>
-      </div>
-
-      <!-- Chat -->
-      <template x-if="selectedGroup">
-        <div style="display: flex; flex-direction: column; height: 100%;">
-          <!-- Chat header -->
-          <div class="chat-header">
-            <span class="avatar-initial"
-              :style="{ width: '40px', height: '40px', fontSize: '18px', background: avatarColor(selectedGroup.name) }"
-              x-text="(selectedGroup.name || '#').charAt(0).toUpperCase()"
-            ></span>
-            <div style="flex: 1; min-width: 0;">
-              <h3 class="title-md" style="margin-bottom: 2px;" x-text="selectedGroup.name"></h3>
-              <div class="text-xs" x-text="selectedGroup.description || (selectedGroup.is_general ? 'general group' : 'meet-up group')"></div>
-            </div>
-            <button
-              x-show="isGroupOwner && !selectedGroup.is_general"
-              @click="generateGroupInviteCode(selectedGroup.id)"
-              class="btn btn-outline"
-              style="padding: 8px 14px; font-size: 12px; min-height: auto; font-family: var(--f-mono); letter-spacing: 0.05em; text-transform: uppercase;"
-            >
-              Invite code
-            </button>
-          </div>
-
-          <!-- Messages -->
-          <div id="messages-container">
-            <div x-show="messages.length === 0" class="text-center text-muted" style="padding: 48px 16px;">
-              <div class="eyebrow mb-4">silence</div>
-              <p style="font-family: var(--f-serif); font-style: italic; font-size: 20px; color: var(--ink-2);">
-                Be the first to say something.
-              </p>
-            </div>
-
-            <template x-for="message in messages" :key="message.id || message.tempId">
-              <div
-                class="message-row"
-                :class="(message.author_id === currentUser.id) ? 'mine' : 'others'"
-              >
-                <div
-                  class="message-content"
-                  :class="(message.author_id === currentUser.id) ? 'mine' : 'others'"
-                >
-                  <div
-                    class="avatar-initial"
-                    :class="(message.author_id === currentUser.id) ? 'avatar-mine' : 'avatar-others'"
-                    :style="(message.author_id !== currentUser.id) ? { background: avatarColor(message.author && message.author.username) } : {}"
-                  >
-                    <span
-                      x-text="message.author && message.author.username ? message.author.username.charAt(0).toUpperCase() : 'U'"
-                    ></span>
-                  </div>
-
-                  <div
-                    class="flex flex-col"
-                    :class="(message.author_id === currentUser.id) ? 'items-end' : 'items-start'"
-                  >
-                    <div
-                      x-show="(message.author_id !== currentUser.id)"
-                      class="username-time"
-                    >
-                      <span class="font-medium"
-                        x-text="message.author && message.author.username ? message.author.username : 'Unknown'"
-                      ></span>
-                      <span class="ml-2 text-muted"
-                        x-text="new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })"
-                      ></span>
-                    </div>
-
-                    <div
-                      class="message-bubble"
-                      :class="(message.author_id === currentUser.id) ? 'mine' : 'others'"
-                    >
-                      <p x-text="message.content" style="margin: 0;"></p>
-                    </div>
-
-                    <div
-                      x-show="(message.author_id === currentUser.id)"
-                      class="message-meta mine"
-                    >
-                      <span x-text="new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })"></span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </template>
-
-            <!-- Typing -->
-            <div x-show="typingUsers.length > 0" class="message-row others">
-              <div class="message-content others">
-                <div class="avatar-initial avatar-others"><span>·</span></div>
-                <div class="flex flex-col items-start">
-                  <div class="message-bubble others" style="padding: 10px 14px;">
-                    <div class="typing-indicator">
-                      <span></span><span></span><span></span>
-                    </div>
-                  </div>
-                  <div class="message-meta others">
-                    <span x-text="typingUsers.join(', ')"></span>
-                    <span x-text="typingUsers.length === 1 ? ' is typing…' : ' are typing…'"></span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Composer -->
-          <div class="chat-input-container">
-            <form @submit.prevent="sendMessage" class="chat-input-wrapper">
-              <input
-                type="text"
-                x-model="newMessage"
-                @focus="onMessageInputFocus"
-                @blur="onMessageInputBlur"
-                @keydown="onMessageInputKeydown"
-                placeholder="say something to the table…"
-                class="chat-input"
-                autocomplete="off"
-              />
-              <button
-                type="submit"
-                :disabled="!newMessage.trim()"
-                class="send-btn"
-                title="Send"
-              >
-                <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                  <path d="M2 9l14-6-5 14-3-6-6-2z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none"/>
-                </svg>
-              </button>
-            </form>
-          </div>
-        </div>
-      </template>
-    </section>
-  </div>
-
-  <!-- ─────── Create Group Modal ─────── -->
-  <div x-show="showCreateGroupModal" class="fixed inset-0 flex items-center justify-center z-50 modal-backdrop" style="padding: 24px;">
-    <div class="modal-card">
-      <div class="eyebrow mb-2" x-text="newGroup.is_general ? 'admin · platform-wide' : 'new meet-up'"></div>
-      <h3 class="title-lg" x-text="newGroup.is_general ? 'New general group' : 'New meet-up group'"></h3>
-
-      <form @submit.prevent="createGroup" class="space-y-4" style="margin-top: 18px;">
-        <div class="form-group">
-          <label class="form-label">Group name</label>
-          <input type="text" x-model="newGroup.name" required class="form-input" placeholder="Spago · dinner crew" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Description (optional)</label>
-          <textarea x-model="newGroup.description" rows="3" class="form-input" placeholder="What's this group for?"></textarea>
-        </div>
-        <div class="form-group" x-show="!newGroup.is_general">
-          <label class="form-label">Meet-up date (optional)</label>
-          <input type="datetime-local" x-model="newGroup.meetup_date" class="form-input" />
-        </div>
-        <div class="flex justify-end space-x-2 pt-4">
-          <button
-            type="button"
-            @click="showCreateGroupModal = false; resetNewGroup()"
-            class="btn btn-outline"
-          >Cancel</button>
-          <button type="submit" class="btn btn-primary">Create group</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- ─────── Group Invite Code Modal ─────── -->
-  <div x-show="showGroupInviteModal" class="fixed inset-0 flex items-center justify-center z-50 modal-backdrop" style="padding: 24px;">
-    <div class="modal-card">
-      <div class="eyebrow mb-2">group invite</div>
-      <h3 class="title-lg">Share this code.</h3>
-      <p class="text-sm text-muted" style="margin: 8px 0 16px;">
-        Anyone with this code can join your meet-up. Treat it like a key.
-      </p>
-      <div class="invite-code-display">
-        <code x-text="groupInviteCode"></code>
-      </div>
-      <div class="flex justify-end space-x-2 pt-4">
-        <button type="button" @click="showGroupInviteModal = false" class="btn btn-outline">Close</button>
-        <button type="button" @click="copyToClipboard(groupInviteCode)" class="btn btn-primary">Copy code</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ─────── Platform Invite Code Modal ─────── -->
-  <div x-show="showPlatformInviteModal" class="fixed inset-0 flex items-center justify-center z-50 modal-backdrop" style="padding: 24px;">
-    <div class="modal-card">
-      <div class="eyebrow mb-2">platform invite</div>
-      <h3 class="title-lg">Invite a new stranger.</h3>
-      <p class="text-sm text-muted" style="margin: 8px 0 16px;">
-        This code lets them register at Strangers Club. They'll show up under "members" once they're in.
-      </p>
-      <div class="invite-code-display">
-        <code x-text="platformInviteCode"></code>
-      </div>
-      <div class="flex justify-end space-x-2 pt-4">
-        <button type="button" @click="showPlatformInviteModal = false" class="btn btn-outline">Close</button>
-        <button type="button" @click="copyToClipboard(platformInviteCode)" class="btn btn-primary">Copy code</button>
-      </div>
-    </div>
-  </div>
-</div>
-{% endblock %} {% block extra_js %}{% endblock %}
+{% endblock %}

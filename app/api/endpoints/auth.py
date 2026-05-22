@@ -17,9 +17,20 @@ from app.auth.oauth import oauth, create_access_token, get_current_user
 from app.crud.user import get_or_create_user_by_google_info
 from app.crud.invitation import verify_invitation_code, use_invitation
 from app.crud.group import add_user_to_group, get_group, add_new_user_to_general_groups
+from app.crud import phone_verification as crud_phone
 from app.schemas.user import Token, User
 from app.schemas.invitation import InvitationVerify
 from app.config import settings
+from app.services.whatsapp import whatsapp_service
+from datetime import datetime
+from pydantic import BaseModel
+
+class OtpRequest(BaseModel):
+    phone: str   # "+91XXXXXXXXXX"
+
+class OtpVerify(BaseModel):
+    phone: str   # "+91XXXXXXXXXX"
+    code: str
 
 router = APIRouter()
 
@@ -383,7 +394,52 @@ async def join_group_with_code(
 async def read_users_me(
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Get current user information.
-    """
     return current_user
+
+
+@router.post("/send-otp")
+async def send_otp(
+    body: OtpRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Send WhatsApp OTP — used by new verify-phone UI."""
+    # Strip country code prefix, keep 10 digits
+    phone_number = body.phone.replace("+91", "").replace(" ", "").strip()
+    if len(phone_number) != 10 or not phone_number.isdigit():
+        raise HTTPException(status_code=400, detail="Enter a valid 10-digit Indian mobile number")
+
+    existing = await crud_phone.get_user_by_phone(db, phone_number)
+    if existing and existing.id != current_user.id:
+        raise HTTPException(status_code=400, detail="Phone number already registered to another account")
+
+    await crud_phone.invalidate_previous_verifications(db, current_user.id, phone_number)
+    verification = await crud_phone.create_verification(db, current_user.id, phone_number, 10)
+
+    success = await whatsapp_service.send_otp(phone_number=phone_number, otp_code=verification.verification_code)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to send OTP. Please try again.")
+
+    return {"message": "Code sent", "expires_in": 600}
+
+
+@router.post("/verify-otp")
+async def verify_otp(
+    body: OtpVerify,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Verify WhatsApp OTP — used by new verify-phone UI."""
+    phone_number = body.phone.replace("+91", "").replace(" ", "").strip()
+
+    ok = await crud_phone.verify_code(db, current_user.id, phone_number, body.code)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Code didn't match or has expired")
+
+    access_token = create_access_token(
+        data={"sub": current_user.email},
+        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    request.session["token"] = access_token
+    return {"token": access_token, "redirect": "/app"}

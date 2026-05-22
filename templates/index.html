@@ -1,77 +1,86 @@
-{% extends "base.html" %} {% block title %}Strangers Club — Connect with people you've met{% endblock %} {% block content %}
-<div class="flex flex-col items-center text-center" style="padding: 24px 0 12px;">
-  <div class="eyebrow mb-4">An invitation</div>
-  <h1 class="title-xl" style="max-width: 760px;">
-    Stay in touch <em>with the strangers</em><br />
-    you actually liked.
-  </h1>
-  <p class="subtitle">
-    Strangers Club is a quiet, invite&#8209;only place to keep the conversation going with people you've met in real life.
-  </p>
-</div>
+{% extends "base.html" %}
+{% block title %}Strangers Club — Stay in touch with the strangers you actually liked{% endblock %}
 
-<div class="card-glass max-w-md" style="margin: 0 auto;">
-  <div class="flex flex-col" style="gap: 16px;">
+{% block content %}
+<div class="stage">
+  <div class="stage-inner">
+
+    <!-- Top meta: monogram + edition number -->
+    <div class="top-meta">
+      <span class="monogram monogram--md">SC</span>
+      <span class="mono-meta">est. mmxxv · no. 0428</span>
+    </div>
+
+    <!-- Hero -->
+    <div class="eyebrow mb-4" style="margin-bottom: 18px;">an invitation</div>
+
+    <h1 class="title-xl" style="margin-bottom: 18px;">
+      Stay in touch<br />
+      <span class="italic-accent">with the strangers</span><br />
+      you actually liked.
+    </h1>
+
+    <p class="text-sm" style="color: var(--ink-2); max-width: 340px; margin-top: 14px;">
+      Strangers Club is a quiet, invite&#8209;only place to keep the
+      conversation going with people you've met in real life.
+    </p>
+
+    <!-- Star ornament -->
+    <div style="margin-top: 30px;">
+      <svg class="star-ornament" viewBox="0 0 42 10" aria-hidden="true">
+        <path d="M0 5 H16" stroke="var(--gold)" stroke-width="0.7" />
+        <path d="M26 5 H42" stroke="var(--gold)" stroke-width="0.7" />
+        <path d="M21 0.5 L22 4 L25 5 L22 6 L21 9.5 L20 6 L17 5 L20 4 Z" fill="var(--gold)" />
+      </svg>
+    </div>
+
+    <!-- Members count card -->
+    <div class="members-card">
+      <div class="avatar-stack">
+        <span class="avatar" style="background:#C76A4A;">M</span>
+        <span class="avatar" style="background:#5A7A52;">T</span>
+        <span class="avatar" style="background:#8B5A8C;">P</span>
+        <span class="avatar" style="background:#3B5A8A;">L</span>
+      </div>
+      <div style="flex:1; line-height:1.2;">
+        <div class="title-sm">1,284 members</div>
+        <div class="mono-meta" style="margin-top:2px;">across 87 cities · this month</div>
+      </div>
+    </div>
+
+    <!-- Spacer -->
+    <div style="flex: 1; min-height: 28px;"></div>
+
+    <!-- Error (if any) -->
     {% if error %}
-    <div class="alert alert-error" role="alert">
+    <div class="alert alert-error" role="alert" style="margin-bottom: 14px;">
       <span>{{ error }}</span>
     </div>
     {% endif %}
 
-    <div class="eyebrow text-center">Step in</div>
-    <h2 class="title-md text-center" style="margin-bottom: 4px;">By invitation only.</h2>
-    <p class="text-sm text-muted text-center" style="max-width: 340px; margin: 0 auto;">
-      Sign in with the Gmail you'd like to use — then enter the invite code your friend shared with you.
-    </p>
-
-    <a
-      href="/api/v1/auth/login/google"
-      class="btn btn-ink btn-full"
-      style="margin-top: 8px; height: 52px;"
-    >
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="20" height="20" style="margin-right: 4px;">
-        <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8c-6.627 0-12-5.373-12-12c0-6.627 5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4C12.955 4 4 12.955 4 24c0 11.045 8.955 20 20 20c11.045 0 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z" />
-        <path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4C16.318 4 9.656 8.337 6.306 14.691z" />
-        <path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238C29.211 35.091 26.715 36 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z" />
-        <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-.792 2.237-2.231 4.166-4.087 5.571c.001-.001.002-.001.003-.002l6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z" />
+    <!-- CTA -->
+    <div class="rule"></div>
+    <a href="/api/v1/auth/login/google" class="btn btn-ink btn-full">
+      <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+        <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8c-6.627 0-12-5.373-12-12c0-6.627 5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4C12.955 4 4 12.955 4 24c0 11.045 8.955 20 20 20c11.045 0 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"/>
+        <path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4C16.318 4 9.656 8.337 6.306 14.691z"/>
+        <path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238C29.211 35.091 26.715 36 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"/>
+        <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-.792 2.237-2.231 4.166-4.087 5.571l6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"/>
       </svg>
       Continue with Google
     </a>
 
-    <div class="text-xs text-muted text-center" style="margin-top: 4px;">
-      No invite? Ask the friend who told you about Strangers Club.
+    <div class="footer-line">
+      By invitation only · <span class="link">house rules</span>
     </div>
+
   </div>
 </div>
+{% endblock %}
 
-<div class="features-grid" style="margin-left: auto; margin-right: auto;">
-  <div class="feature-card">
-    <div class="feature-icon">i</div>
-    <h3 class="title-md">Invite-only</h3>
-    <p class="text-sm text-muted" style="line-height: 1.55;">
-      Every new member needs an invite from someone already inside. Small, quiet, trusted.
-    </p>
-  </div>
-
-  <div class="feature-card">
-    <div class="feature-icon">ii</div>
-    <h3 class="title-md">Meet-up groups</h3>
-    <p class="text-sm text-muted" style="line-height: 1.55;">
-      Plan the next dinner with the people from the last one. Time, place, who's in.
-    </p>
-  </div>
-
-  <div class="feature-card">
-    <div class="feature-icon">iii</div>
-    <h3 class="title-md">House rules</h3>
-    <p class="text-sm text-muted" style="line-height: 1.55;">
-      Be kind. Keep it private. Show up. That's all.
-    </p>
-  </div>
-</div>
-{% endblock %} {% block extra_js %}
+{% block extra_js %}
 <script>
-  // If the user is already logged in (has a token), redirect them directly to the app
+  // If the user is already logged in, skip ahead.
   if (localStorage.getItem("token")) {
     window.location.href = "/app";
   }

@@ -121,6 +121,47 @@ async def delete_group(
     group = await crud_group.delete_group(db, group_id=group_id)
     return group
 
+@router.get("/{group_id}/members")
+async def get_group_members(
+    group_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    group = await crud_group.get_group(db, group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    if current_user.id not in [m.id for m in group.members]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return [
+        {"id": str(m.id), "username": m.username, "joined_at": None}
+        for m in group.members
+    ]
+
+
+@router.post("/{group_id}/leave")
+async def leave_group(
+    group_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Leave a group. Owners cannot leave — they must delete the group instead.
+    """
+    group = await crud_group.get_group(db, group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+
+    member_ids = [member.id for member in group.members]
+    if current_user.id not in member_ids:
+        raise HTTPException(status_code=400, detail="You are not a member of this group")
+
+    if group.owner_id == current_user.id:
+        raise HTTPException(status_code=400, detail="Owners cannot leave their own group. Delete the group instead.")
+
+    await crud_group.remove_user_from_group(db, group_id, current_user.id)
+    return {"message": f"You have left {group.name}"}
+
+
 @router.post("/{group_id}/channels", response_model=Channel)
 async def create_channel(
     group_id: UUID,

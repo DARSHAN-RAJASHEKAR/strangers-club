@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 from uuid import UUID
@@ -133,6 +133,68 @@ async def read_group_invitations(
             detail="Failed to fetch group invitations"
         )
 
+def normalize_code(code: str) -> str:
+    """Insert dash at position 5 if user typed 8 chars without it (e.g. KQ317G34 → KQ317-G34)."""
+    code = code.strip().upper().replace("-", "")
+    if len(code) == 8:
+        return code[:5] + "-" + code[5:]
+    return code
+
+
+@router.get("/verify/{code}")
+async def verify_invitation_code(
+    code: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Preview invitation — public, no auth. Used to show 'invited by' and 'valid until' on the ticket stub."""
+    code = normalize_code(code)
+    invitation = await crud_invitation.verify_invitation_code(db, code)
+    if not invitation:
+        raise HTTPException(status_code=400, detail="Invalid or expired invitation code")
+
+    return {
+        "valid": True,
+        "inviter_username": invitation.inviter.username if invitation.inviter else "—",
+        "expires_at": invitation.expires_at.isoformat() if invitation.expires_at else None,
+        "group_name": invitation.group.name if invitation.group else "—",
+    }
+
+
+@router.post("/verify-code")
+async def submit_invitation_code(
+    invitation_in: InvitationVerify,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Use an invitation code — verifies, marks used, adds user to group, returns JWT."""
+    from app.crud.group import add_user_to_group, add_new_user_to_general_groups
+    from app.auth.oauth import create_access_token
+    from app.config import settings
+    from datetime import timedelta
+
+    code = normalize_code(invitation_in.code)
+    invitation = await crud_invitation.verify_invitation_code(db, code)
+    if not invitation:
+        raise HTTPException(status_code=400, detail="Invalid or expired invitation code")
+
+    invitation = await crud_invitation.use_invitation(db, invitation.id, current_user.id)
+    await add_user_to_group(db, invitation.group_id, current_user.id)
+    await add_new_user_to_general_groups(db, current_user.id)
+
+    token = create_access_token(
+        data={"sub": current_user.email},
+        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    request.session["token"] = token
+
+    requires_phone = not current_user.phone_verified and not current_user.is_superuser
+    return {
+        "token": token,
+        "redirect": "/verify-phone" if requires_phone else "/app",
+    }
+
+
 @router.get("/{invitation_id}", response_model=Invitation)
 async def read_invitation(
     invitation_id: UUID,
@@ -146,11 +208,11 @@ async def read_invitation(
         invitation = await crud_invitation.get_invitation(db, invitation_id)
         if not invitation:
             raise HTTPException(status_code=404, detail="Invitation not found")
-        
+
         # Check if user is the inviter
         if invitation.inviter_id != current_user.id:
             raise HTTPException(status_code=403, detail="Access denied")
-        
+
         return invitation
     except HTTPException:
         raise
@@ -174,25 +236,25 @@ async def delete_invitation(
         invitation = await crud_invitation.get_invitation(db, invitation_id)
         if not invitation:
             raise HTTPException(status_code=404, detail="Invitation not found")
-        
+
         # Check if user is the inviter or the group owner
         group = await crud_group.get_group(db, invitation.group_id)
         is_inviter = invitation.inviter_id == current_user.id
         is_group_owner = group and group.owner_id == current_user.id
-        
+
         if not (is_inviter or is_group_owner):
             raise HTTPException(
-                status_code=403, 
+                status_code=403,
                 detail="Only the invitation creator or group owner can delete invitations"
             )
-        
+
         # Check if invitation is already used
         if invitation.is_used:
             raise HTTPException(status_code=400, detail="Cannot delete a used invitation")
-        
+
         invitation = await crud_invitation.delete_invitation(db, invitation_id=invitation_id)
         return invitation
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -200,54 +262,6 @@ async def delete_invitation(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete invitation"
-        )
-
-@router.get("/verify/{code}")
-async def verify_invitation_code(
-    code: str,
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Verify if an invitation code is valid (public endpoint, no auth required).
-    """
-    try:
-        logger.info(f"Verifying invitation code: {code}")
-        
-        # Validate code format
-        if not code or len(code.strip()) == 0:
-            logger.warning("Empty invitation code provided")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, 
-                detail="Invitation code is required"
-            )
-        
-        # Clean the code
-        code = code.strip().upper()
-        
-        invitation = await crud_invitation.verify_invitation_code(db, code)
-        if not invitation:
-            logger.warning(f"Invalid invitation code: {code}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, 
-                detail="Invalid or expired invitation code"
-            )
-        
-        logger.info(f"Valid invitation code: {code}")
-        
-        # Return basic information about the invitation
-        return {
-            "valid": True,
-            "group_name": invitation.group.name if invitation.group else "Unknown Group",
-            "inviter_username": invitation.inviter.username if invitation.inviter else "Unknown User"
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error verifying invitation code {code}: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to verify invitation code"
         )
 
 @router.post("/generate-new-code/{group_id}", response_model=Invitation)

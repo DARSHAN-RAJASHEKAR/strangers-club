@@ -69,7 +69,6 @@
               @input="onCodeInput($event, i-1)"
               @keydown="onCodeKey($event, i-1)"
               @paste="onCodePaste($event)"
-              :ref="`cell${i-1}`"
               placeholder=""
             />
           </template>
@@ -94,7 +93,7 @@
       <button
         type="submit"
         class="btn btn-primary btn-full"
-        :disabled="loading || code.join('').length < 6"
+        :disabled="loading || code.join('').length < 8"
         style="margin-top: 24px;"
       >
         <span x-show="!loading">Enter the club</span>
@@ -104,7 +103,7 @@
 
     <div class="footer-line">
       No code?
-      <span class="link link-accent">ask the friend who told you about it</span>
+      <span style="color: var(--muted);">ask the friend who told you about it</span>
     </div>
 
   </div>
@@ -120,20 +119,47 @@
       validUntil: "",
       loading: false,
       error: "",
+      token: "{{ token }}" || localStorage.getItem("token"),
+
+      async lookupCode() {
+        const codeStr = this.code.join("").trim();
+        if (codeStr.length < 8) { this.invitedBy = ""; this.validUntil = ""; return; }
+        try {
+          const r = await fetch(`/api/v1/invitations/verify/${codeStr}`);
+          if (!r.ok) { this.invitedBy = ""; this.validUntil = ""; return; }
+          const d = await r.json();
+          this.invitedBy = d.inviter_username || "—";
+          this.validUntil = d.expires_at
+            ? new Date(d.expires_at).toLocaleDateString([], { month: 'short', day: 'numeric' })
+            : "—";
+        } catch (_) { this.invitedBy = ""; this.validUntil = ""; }
+      },
+
+      cell(idx) {
+        return document.querySelectorAll('.otp-grid input')[idx];
+      },
 
       onCodeInput(e, idx) {
         const val = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
-        this.code[idx] = val.slice(0, 1);
+        this.code[idx] = val.slice(-1);
         e.target.value = this.code[idx];
-        if (val && idx < 7) {
-          const next = this.$refs[`cell${idx+1}`];
+        if (this.code[idx] && idx < 7) {
+          const next = this.cell(idx + 1);
           if (next) next.focus();
         }
+        if (this.code.every(c => c !== "")) this.lookupCode();
       },
       onCodeKey(e, idx) {
-        if (e.key === "Backspace" && !this.code[idx] && idx > 0) {
-          const prev = this.$refs[`cell${idx-1}`];
-          if (prev) prev.focus();
+        if (e.key === "Backspace") {
+          if (this.code[idx]) {
+            this.code[idx] = "";
+            e.target.value = "";
+          } else if (idx > 0) {
+            this.code[idx - 1] = "";
+            const prev = this.cell(idx - 1);
+            if (prev) { prev.value = ""; prev.focus(); }
+          }
+          e.preventDefault();
         }
       },
       onCodePaste(e) {
@@ -142,20 +168,26 @@
         if (!text) return;
         e.preventDefault();
         for (let i = 0; i < 8; i++) this.code[i] = text[i] || "";
-        const focusIdx = Math.min(text.length, 7);
-        const cell = this.$refs[`cell${focusIdx}`];
-        if (cell) cell.focus();
+        this.$nextTick(() => {
+          const focusIdx = Math.min(text.length, 7);
+          const c = this.cell(focusIdx);
+          if (c) c.focus();
+          if (this.code.every(x => x !== "")) this.lookupCode();
+        });
       },
 
       async submitCode() {
         const codeStr = this.code.join("").trim();
-        if (codeStr.length < 6) return;
+        if (codeStr.length < 8) return;
         this.loading = true;
         this.error = "";
         try {
           const response = await fetch("/api/v1/invitations/verify-code", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${this.token}`,
+            },
             body: JSON.stringify({ code: codeStr }),
           });
           if (!response.ok) {

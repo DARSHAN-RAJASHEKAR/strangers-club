@@ -4,7 +4,7 @@
 {% block content %}
 <div x-data="app()" x-init="init()">
 
-  <div class="app-shell">
+  <div class="app-shell" :class="{'mobile-chat-active': mobileView === 'chat'}">
 
     <!-- ─────────────────── SIDEBAR ─────────────────── -->
     <aside class="sidebar">
@@ -160,6 +160,15 @@
 
           <!-- Header -->
           <div class="chat-header">
+            <button
+              class="mobile-back-btn"
+              @click="mobileView = 'list'; selectedGroup = null"
+              style="background:none;border:none;color:var(--ink);cursor:pointer;padding:0 10px 0 0;display:none;align-items:center;"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
             <span
               class="avatar avatar--xl"
               :style="{ background: avatarColor(selectedGroup.name) }"
@@ -173,22 +182,56 @@
                 <span class="mono-meta" x-text="selectedGroup.meetup_date ? formatMeetupDate(selectedGroup.meetup_date) : (selectedGroup.is_general ? 'general group' : 'no date set')"></span>
               </div>
             </div>
-            <button
-              x-show="isGroupOwner && !selectedGroup.is_general"
-              @click="generateGroupInviteCode(selectedGroup.id)"
-              class="btn btn-outline btn-mono"
-              style="height: 36px; padding: 0 14px;"
-            >
-              get invite code
-            </button>
-            <button
-              x-show="!isGroupOwner"
-              @click="leaveGroup(selectedGroup.id)"
-              class="btn btn-outline btn-mono"
-              style="height: 36px; padding: 0 14px; color: var(--accent); border-color: var(--accent);"
-            >
-              leave
-            </button>
+            <!-- Desktop actions -->
+            <div class="chat-header__actions" style="display:flex; gap:8px; align-items:center;">
+              <button
+                x-show="isGroupOwner && !selectedGroup.is_general"
+                @click="generateGroupInviteCode(selectedGroup.id)"
+                class="btn btn-outline btn-mono"
+                style="height: 36px; padding: 0 14px;"
+              >
+                get invite code
+              </button>
+              <button
+                x-show="!isGroupOwner"
+                @click="leaveGroup(selectedGroup.id)"
+                class="btn btn-outline btn-mono"
+                style="height: 36px; padding: 0 14px; color: var(--accent); border-color: var(--accent);"
+              >
+                leave
+              </button>
+            </div>
+
+            <!-- Mobile three-dot menu -->
+            <div class="chat-header__dots" x-data="{ open: false }" style="position:relative;">
+              <button
+                @click="open = !open"
+                @click.outside="open = false"
+                style="background:none;border:none;color:var(--ink);cursor:pointer;padding:6px;display:flex;align-items:center;justify-content:center;border-radius:50%;width:36px;height:36px;"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/>
+                </svg>
+              </button>
+              <div
+                x-show="open"
+                x-transition
+                style="position:absolute;right:0;top:44px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);min-width:160px;z-index:100;overflow:hidden;"
+              >
+                <button
+                  x-show="isGroupOwner && !selectedGroup.is_general"
+                  @click="generateGroupInviteCode(selectedGroup.id); open = false"
+                  style="width:100%;text-align:left;padding:12px 16px;background:none;border:none;color:var(--ink);font-family:var(--f-mono);font-size:12px;cursor:pointer;letter-spacing:0.05em;"
+                  onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background='none'"
+                >get invite code</button>
+                <button
+                  x-show="!isGroupOwner"
+                  @click="leaveGroup(selectedGroup.id); open = false"
+                  style="width:100%;text-align:left;padding:12px 16px;background:none;border:none;color:var(--accent);font-family:var(--f-mono);font-size:12px;cursor:pointer;letter-spacing:0.05em;"
+                  onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background='none'"
+                >leave group</button>
+              </div>
+            </div>
           </div>
 
           <!-- Messages -->
@@ -390,6 +433,7 @@
       messages: [],
       members: [],
       selectedGroup: null,
+      mobileView: 'list',
       selectedChannel: null,
       newMessage: "",
       loading: true,
@@ -440,6 +484,7 @@
 
       async selectGroup(group) {
         this.selectedGroup = group;
+        this.mobileView = 'chat';
         this.selectedChannel = null;
         this.messages = [];
         this.members = [];

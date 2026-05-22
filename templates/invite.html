@@ -101,6 +101,10 @@
       </button>
     </form>
 
+    <button type="button" class="btn btn-ink btn-full" @click="skipDemo()" style="margin-top: 10px;">
+      Demo — skip this step
+    </button>
+
     <div class="footer-line">
       No code?
       <span style="color: var(--muted);">ask the friend who told you about it</span>
@@ -174,6 +178,10 @@
           if (c) c.focus();
           if (this.code.every(x => x !== "")) this.lookupCode();
         });
+      },
+
+      skipDemo() {
+        window.location.href = "/verify-phone";
       },
 
       async submitCode() {

@@ -11,7 +11,6 @@
     </div>
 
     <!-- Hero -->
-    <div class="eyebrow mb-4" style="margin-bottom: 18px;">an invitation</div>
 
     <h1 class="title-xl" style="margin-bottom: 18px;">
       Stay in touch<br />
@@ -69,6 +68,10 @@
       Continue with Google
     </a>
 
+    <button type="button" class="btn btn-ink btn-full" id="demoBtn" onclick="startDemo()" style="margin-top: 10px;">
+      Demo — explore without signing up
+    </button>
+
     <div class="footer-line">
       By invitation only · <span class="link">house rules</span>
     </div>
@@ -82,6 +85,23 @@
   // If the user is already logged in, skip ahead.
   if (localStorage.getItem("token")) {
     window.location.href = "/app";
+  }
+
+  async function startDemo() {
+    const btn = document.getElementById("demoBtn");
+    btn.disabled = true;
+    btn.textContent = "Starting demo…";
+    try {
+      const r = await fetch("/api/v1/auth/demo", { method: "POST" });
+      if (!r.ok) throw new Error();
+      const d = await r.json();
+      localStorage.setItem("token", d.token);
+      window.location.href = "/invite?token=" + encodeURIComponent(d.token);
+    } catch (_) {
+      btn.disabled = false;
+      btn.textContent = "Demo — explore without signing up";
+      alert("Demo unavailable. Please try again.");
+    }
   }
 </script>
 {% endblock %}

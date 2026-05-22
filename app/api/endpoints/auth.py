@@ -397,6 +397,59 @@ async def read_users_me(
     return current_user
 
 
+@router.delete("/account")
+async def delete_account(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Delete the current user's account and restore any invitation they used."""
+    from sqlalchemy.future import select as sa_select
+    from app.models.invitation import Invitation
+    from app.models.user import user_group as user_group_table
+
+    # Restore the invitation they used (so inviter gets it back)
+    result = await db.execute(
+        sa_select(Invitation).where(Invitation.invitee_id == current_user.id)
+    )
+    used_invite = result.scalars().first()
+    if used_invite:
+        used_invite.is_used = False
+        used_invite.invitee_id = None
+        used_invite.used_at = None
+        db.add(used_invite)
+
+    # Remove from all groups
+    await db.execute(
+        user_group_table.delete().where(user_group_table.c.user_id == current_user.id)
+    )
+
+    # Delete the user
+    await db.delete(current_user)
+    await db.commit()
+
+    request.session.clear()
+    return {"message": "Account deleted"}
+
+
+@router.post("/demo")
+async def demo_login(
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """Issue a demo token — no Google auth required."""
+    from app.crud.user import get_user_by_email
+    demo_user = await get_user_by_email(db, "demo@strangers.club")
+    if not demo_user:
+        raise HTTPException(status_code=503, detail="Demo not available right now")
+    token = create_access_token(
+        data={"sub": demo_user.email},
+        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    request.session["token"] = token
+    return {"token": token}
+
+
 @router.post("/send-otp")
 async def send_otp(
     body: OtpRequest,

@@ -107,6 +107,23 @@ async def init_db():
             await session.commit()
             await session.refresh(admin)
 
+        # --- DEMO USER ---
+        result = await session.execute(
+            select(User).where(User.email == "demo@strangers.club")
+        )
+        demo = result.scalars().first()
+        if not demo:
+            demo = User(
+                email="demo@strangers.club",
+                username="DEMO1",
+                is_active=True,
+                is_superuser=False,
+                phone_verified=True,
+            )
+            session.add(demo)
+            await session.commit()
+            print("Demo user created: demo@strangers.club")
+
 # Root route
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
@@ -129,9 +146,12 @@ async def logout(request: Request):
 # Invitation page (for platform registration)
 @app.get("/invite", response_class=HTMLResponse)
 async def invite_page(request: Request):
-    token = request.session.get("token", "")
+    token = request.session.get("token", "") or request.query_params.get("token", "")
     if not token:
         return RedirectResponse(url="/")
+    if request.query_params.get("token"):
+        request.session["token"] = request.query_params.get("token")
+        return RedirectResponse(url="/invite")
     return templates.TemplateResponse("invite.html", {"request": request, "token": token})
 
 # Join group page (for joining groups with invitation codes)

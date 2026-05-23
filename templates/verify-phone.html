@@ -189,12 +189,23 @@
       async deleteAccount() {
         if (!confirm("This will permanently delete your account and cancel your invite. Are you sure?")) return;
         try {
-          await fetch("/api/v1/auth/account", {
+          const r = await fetch("/api/v1/auth/account", {
             method: "DELETE",
             headers: { Authorization: `Bearer ${this.token}` },
           });
-        } catch (_) {}
+          if (!r.ok) {
+            const d = await r.json().catch(() => ({}));
+            alert(d.detail || "Couldn't delete account. Please try again.");
+            return;
+          }
+        } catch (_) {
+          alert("Couldn't reach the server. Please try again.");
+          return;
+        }
         localStorage.removeItem("token");
+        localStorage.removeItem("is_demo");
+        localStorage.removeItem("demo_invite_code");
+        localStorage.removeItem("demo_phone");
         window.location.href = "/logout";
       },
 

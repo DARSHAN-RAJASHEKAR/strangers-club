@@ -413,29 +413,41 @@ async def delete_account(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Delete the current user's account and restore any invitation they used."""
-    from sqlalchemy.future import select as sa_select
-    from app.models.invitation import Invitation
-    from app.models.user import user_group as user_group_table
+    """Delete the current user's account — cleans all FK dependencies first (PostgreSQL safe)."""
+    from sqlalchemy import text
 
-    # Restore the invitation they used (so inviter gets it back)
-    result = await db.execute(
-        sa_select(Invitation).where(Invitation.invitee_id == current_user.id)
-    )
-    used_invite = result.scalars().first()
-    if used_invite:
-        used_invite.is_used = False
-        used_invite.invitee_id = None
-        used_invite.used_at = None
-        db.add(used_invite)
+    uid = str(current_user.id)
 
-    # Remove from all groups
+    # 1. Restore the invitation they used (so inviter gets it back)
     await db.execute(
-        user_group_table.delete().where(user_group_table.c.user_id == current_user.id)
+        text("UPDATE invitations SET is_used=false, invitee_id=NULL, used_at=NULL WHERE invitee_id=:uid"),
+        {"uid": uid}
     )
 
-    # Delete the user
-    await db.delete(current_user)
+    # 2. Delete messages they authored
+    await db.execute(text("DELETE FROM messages WHERE author_id=:uid"), {"uid": uid})
+
+    # 3. Delete invitations they sent
+    await db.execute(text("DELETE FROM invitations WHERE inviter_id=:uid"), {"uid": uid})
+
+    # 4. Delete groups they own (cascade: messages → channels → invitations → memberships → group)
+    result = await db.execute(text("SELECT id FROM groups WHERE owner_id=:uid"), {"uid": uid})
+    owned_group_ids = [str(row[0]) for row in result.fetchall()]
+    for gid in owned_group_ids:
+        await db.execute(text("DELETE FROM messages WHERE channel_id IN (SELECT id FROM channels WHERE group_id=:gid)"), {"gid": gid})
+        await db.execute(text("DELETE FROM channels WHERE group_id=:gid"), {"gid": gid})
+        await db.execute(text("DELETE FROM invitations WHERE group_id=:gid"), {"gid": gid})
+        await db.execute(text("DELETE FROM user_group WHERE group_id=:gid"), {"gid": gid})
+        await db.execute(text("DELETE FROM groups WHERE id=:gid"), {"gid": gid})
+
+    # 5. Remove from all group memberships
+    await db.execute(text("DELETE FROM user_group WHERE user_id=:uid"), {"uid": uid})
+
+    # 6. Delete phone verifications
+    await db.execute(text("DELETE FROM phone_verifications WHERE user_id=:uid"), {"uid": uid})
+
+    # 7. Delete the user (raw SQL to avoid ORM relationship cascade conflicts)
+    await db.execute(text("DELETE FROM users WHERE id=:uid"), {"uid": uid})
     await db.commit()
 
     request.session.clear()

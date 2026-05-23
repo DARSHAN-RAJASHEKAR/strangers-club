@@ -347,7 +347,7 @@
 
           <div class="rule rule-soft" style="margin: 20px 0;"></div>
 
-          <div class="mono-meta">house rules</div>
+          <a href="/house-rules" class="mono-meta" style="text-decoration: none;">house rules ↗</a>
           <p class="house-rules" style="margin-top: 8px;">
             Be kind. Keep it private. Show up.
           </p>
@@ -704,6 +704,8 @@
 
       logout() {
         localStorage.removeItem("token");
+        localStorage.removeItem("is_demo");
+        localStorage.removeItem("demo_invite_code");
         this.closeWebSocket();
         window.location.href = "/logout";
       },

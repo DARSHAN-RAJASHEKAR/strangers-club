@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}House Rules — Strangers Club{% endblock %}
+
+{% block content %}
+<div class="stage">
+  <div class="stage-inner">
+
+    <!-- Top bar -->
+    <div class="top-meta">
+      <a href="/" class="back-link">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>back</span>
+      </a>
+      <span class="monogram monogram--md">SC</span>
+    </div>
+
+    <!-- Header -->
+    <div class="eyebrow" style="margin-bottom: 10px;">membership · conduct</div>
+    <h1 class="title-lg">
+      House<br />
+      <span class="italic-accent">Rules.</span>
+    </h1>
+
+    <p class="text-sm" style="color: var(--ink-2); margin-top: 14px; max-width: 340px;">
+      Strangers Club is a quiet place. These are the things
+      that keep it that way.
+    </p>
+
+    <!-- Star ornament -->
+    <div style="margin-top: 28px; margin-bottom: 32px;">
+      <svg class="star-ornament" viewBox="0 0 42 10" aria-hidden="true">
+        <path d="M0 5 H16" stroke="var(--gold)" stroke-width="0.7" />
+        <path d="M26 5 H42" stroke="var(--gold)" stroke-width="0.7" />
+        <path d="M21 0.5 L22 4 L25 5 L22 6 L21 9.5 L20 6 L17 5 L20 4 Z" fill="var(--gold)" />
+      </svg>
+    </div>
+
+    <!-- Rules -->
+    <div class="rules-list">
+
+      <div class="rule-item">
+        <div class="rule-num">I</div>
+        <div class="rule-body">
+          <div class="rule-title">Real people only.</div>
+          <p class="rule-text">
+            Your account is you. No bots, no fake identities, no
+            shared logins.
+          </p>
+        </div>
+      </div>
+
+      <div class="rule-divider"></div>
+
+      <div class="rule-item">
+        <div class="rule-num">II</div>
+        <div class="rule-body">
+          <div class="rule-title">You vouch for who you invite.</div>
+          <p class="rule-text">
+            Every member was let in by someone. When you send an
+            invitation, you're saying this person belongs here.
+            Their conduct reflects on you.
+          </p>
+        </div>
+      </div>
+
+      <div class="rule-divider"></div>
+
+      <div class="rule-item">
+        <div class="rule-num">III</div>
+        <div class="rule-body">
+          <div class="rule-title">Be good to each other.</div>
+          <p class="rule-text">
+            No harassment, no hate, no cruelty. Disagreement is
+            fine. Making someone feel unwelcome is not.
+          </p>
+        </div>
+      </div>
+
+      <div class="rule-divider"></div>
+
+      <div class="rule-item">
+        <div class="rule-num">IV</div>
+        <div class="rule-body">
+          <div class="rule-title">No promotion. No spam.</div>
+          <p class="rule-text">
+            This is not a broadcast channel. Don't pitch products,
+            drive traffic, or mass-message people who didn't ask.
+          </p>
+        </div>
+      </div>
+
+      <div class="rule-divider"></div>
+
+      <div class="rule-item">
+        <div class="rule-num">V</div>
+        <div class="rule-body">
+          <div class="rule-title">What's shared here stays here.</div>
+          <p class="rule-text">
+            Respect the privacy of conversations. Don't screenshot
+            or share messages outside the club without the
+            sender's consent.
+          </p>
+        </div>
+      </div>
+
+      <div class="rule-divider"></div>
+
+      <div class="rule-item">
+        <div class="rule-num">VI</div>
+        <div class="rule-body">
+          <div class="rule-title">Break the rules, lose your seat.</div>
+          <p class="rule-text">
+            Membership is a privilege, not a right. We reserve
+            the right to remove anyone who makes this place worse
+            for everyone else.
+          </p>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Footer -->
+    <div style="margin-top: 40px;">
+      <div class="rule"></div>
+      <div class="footer-line" style="text-align: center;">
+        By invitation only · <a href="/" style="color: var(--muted);">back to home</a>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  .rules-list {
+    display: flex;
+    flex-direction: column;
+  }
+  .rule-item {
+    display: flex;
+    gap: 20px;
+    padding: 20px 0;
+  }
+  .rule-num {
+    font-family: var(--f-serif);
+    font-style: italic;
+    font-size: 15px;
+    color: var(--gold);
+    min-width: 24px;
+    padding-top: 2px;
+    letter-spacing: 0.02em;
+  }
+  .rule-body {
+    flex: 1;
+  }
+  .rule-title {
+    font-family: var(--f-serif);
+    font-size: 18px;
+    color: var(--ink);
+    line-height: 1.2;
+    margin-bottom: 6px;
+  }
+  .rule-text {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--ink-2);
+    margin: 0;
+  }
+  .rule-divider {
+    height: 1px;
+    background: var(--border-soft);
+    width: 100%;
+  }
+</style>
+{% endblock %}

@@ -178,9 +178,19 @@ async def submit_invitation_code(
     if not invitation:
         raise HTTPException(status_code=400, detail="Invalid or expired invitation code")
 
+    # Sandbox: demo users can only join demo groups; real users can't join demo groups
+    is_demo_lounge = invitation.group and invitation.group.name == "Demo Lounge"
+    inviter_is_demo = invitation.inviter and invitation.inviter.email.endswith("@demo.strangers.club")
+    current_is_demo = current_user.email.endswith("@demo.strangers.club")
+    if current_is_demo and not inviter_is_demo and not is_demo_lounge:
+        raise HTTPException(status_code=403, detail="Demo accounts can only use demo invite codes.")
+    if not current_is_demo and (inviter_is_demo or is_demo_lounge):
+        raise HTTPException(status_code=403, detail="This invite code is for demo accounts only.")
+
     invitation = await crud_invitation.use_invitation(db, invitation.id, current_user.id)
     await add_user_to_group(db, invitation.group_id, current_user.id)
-    await add_new_user_to_general_groups(db, current_user.id)
+    if not current_user.email.endswith("@demo.strangers.club"):
+        await add_new_user_to_general_groups(db, current_user.id)
 
     token = create_access_token(
         data={"sub": current_user.email},

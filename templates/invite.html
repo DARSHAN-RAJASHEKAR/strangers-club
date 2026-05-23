@@ -89,7 +89,24 @@
         </div>
       </div>
 
-      <!-- Submit -->
+      <!-- Demo hint: shows the code + paste button -->
+      <div
+        x-show="isDemo && demoCode"
+        class="hint-card"
+        style="margin-top: 20px; justify-content: space-between; align-items: center;"
+      >
+        <div>
+          <div class="form-label" style="margin-bottom: 4px;">your demo code</div>
+          <div x-text="demoCode" style="font-size: 22px; letter-spacing: 0.15em; color: var(--gold); font-weight: 600; font-family: var(--font-mono);"></div>
+        </div>
+        <button
+          type="button"
+          @click="pasteDemo()"
+          style="background: none; border: 1px solid var(--gold); color: var(--gold); font-size: 13px; padding: 6px 14px; border-radius: 4px; cursor: pointer; white-space: nowrap; font-family: var(--font-mono);"
+        >Use This</button>
+      </div>
+
+      <!-- Submit button: for everyone -->
       <button
         type="submit"
         class="btn btn-primary btn-full"
@@ -100,10 +117,6 @@
         <span x-show="loading">Checking…</span>
       </button>
     </form>
-
-    <button type="button" class="btn btn-ink btn-full" @click="skipDemo()" style="margin-top: 10px;">
-      Demo — skip this step
-    </button>
 
     <div class="footer-line">
       No code?
@@ -124,6 +137,8 @@
       loading: false,
       error: "",
       token: "{{ token }}" || localStorage.getItem("token"),
+      isDemo: localStorage.getItem("is_demo") === "1",
+      demoCode: localStorage.getItem("demo_invite_code") || "",
 
       async lookupCode() {
         const codeStr = this.code.join("").trim();
@@ -180,13 +195,29 @@
         });
       },
 
-      skipDemo() {
-        window.location.href = "/verify-phone";
+      pasteDemo() {
+        const raw = this.demoCode.replace(/-/g, "");
+        this.code = raw.split("").slice(0, 8);
+        this.$nextTick(() => {
+          const inputs = document.querySelectorAll(".otp-grid input");
+          inputs.forEach((inp, i) => { if (inp) inp.value = this.code[i] || ""; });
+          this.lookupCode();
+        });
       },
 
       async submitCode() {
         const codeStr = this.code.join("").trim();
         if (codeStr.length < 8) return;
+
+        // Demo validation: entered code must match the assigned demo code
+        if (this.isDemo && this.demoCode) {
+          const expected = this.demoCode.replace(/-/g, "").toUpperCase();
+          if (codeStr.toUpperCase() !== expected) {
+            this.error = "Enter the code shown above.";
+            return;
+          }
+        }
+
         this.loading = true;
         this.error = "";
         try {

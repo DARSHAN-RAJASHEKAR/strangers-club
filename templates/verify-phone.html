@@ -41,12 +41,27 @@
                 x-model="phone"
                 placeholder="98201 47723"
                 autocomplete="tel"
-                required
+                :required="!isDemo"
               />
             </div>
           </div>
 
-          <div class="hint-card">
+          <!-- Demo: show the assigned number + paste button -->
+          <div x-show="isDemo && demoPhone" class="hint-card" style="justify-content: space-between; align-items: center;">
+            <div>
+              <div class="form-label" style="margin-bottom: 4px;">your demo number</div>
+              <div style="font-size: 22px; letter-spacing: 0.15em; color: var(--gold); font-weight: 600; font-family: var(--font-mono);"
+                x-text="demoPhone.slice(0,5) + '-' + demoPhone.slice(5)"></div>
+            </div>
+            <button
+              type="button"
+              @click="phone = demoPhone"
+              style="background: none; border: 1px solid var(--gold); color: var(--gold); font-size: 13px; padding: 6px 14px; border-radius: 4px; cursor: pointer; white-space: nowrap; font-family: var(--font-mono);"
+            >Use This</button>
+          </div>
+
+          <!-- Real users: WhatsApp hint -->
+          <div x-show="!isDemo" class="hint-card">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 2C6.48 2 2 6.48 2 12c0 1.76.46 3.41 1.25 4.84L2 22l5.27-1.38A9.92 9.92 0 0012 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm5.05 14.34c-.21.59-1.23 1.11-1.7 1.18-.43.06-.97.09-1.57-.1-.36-.11-.83-.27-1.43-.52-2.51-1.08-4.15-3.6-4.27-3.77-.13-.17-1.03-1.37-1.03-2.61 0-1.24.65-1.85.88-2.1.23-.25.5-.31.67-.31h.48c.15 0 .36-.06.56.43.21.51.71 1.76.78 1.89.06.13.1.28.02.45-.08.17-.13.27-.25.42-.13.15-.27.34-.39.45-.13.13-.26.27-.11.52.15.25.66 1.09 1.42 1.77.98.87 1.8 1.14 2.05 1.27.25.13.39.11.54-.06.15-.17.62-.72.78-.97.16-.25.33-.21.54-.13.21.08 1.37.64 1.6.76.23.13.39.19.45.29.06.1.06.6-.15 1.19z"/>
             </svg>
@@ -69,20 +84,17 @@
 
           <div style="flex: 1; min-height: 32px;"></div>
 
+          <!-- Submit: same button for everyone -->
           <button
             type="submit"
             class="btn btn-primary btn-full"
             :disabled="loading || !phone"
             style="margin-top: 32px;"
           >
-            <span x-show="!loading">Send the code</span>
-            <span x-show="loading">Sending…</span>
+            <span x-show="!loading">Continue</span>
+            <span x-show="loading">Checking…</span>
           </button>
         </form>
-
-        <button type="button" class="btn btn-ink btn-full" @click="skipToApp()" style="margin-top: 10px;">
-          Demo — skip this step
-        </button>
       </div>
     </template>
 
@@ -121,7 +133,20 @@
             </template>
           </div>
 
-          <div style="margin-top: 16px;">
+          <!-- Demo OTP hint -->
+          <div x-show="isDemo && demoOtp" class="hint-card" style="margin-top: 18px; justify-content: space-between; align-items: center;">
+            <div>
+              <div class="form-label" style="margin-bottom: 4px;">your demo otp</div>
+              <div x-text="demoOtp" style="font-size: 22px; letter-spacing: 0.15em; color: var(--gold); font-weight: 600; font-family: var(--font-mono);"></div>
+            </div>
+            <button
+              type="button"
+              @click="pasteDemoOtp()"
+              style="background: none; border: 1px solid var(--gold); color: var(--gold); font-size: 13px; padding: 6px 14px; border-radius: 4px; cursor: pointer; white-space: nowrap; font-family: var(--font-mono);"
+            >Use This</button>
+          </div>
+
+          <div x-show="!isDemo" style="margin-top: 16px;">
             <span class="text-sm text-muted">Didn't get it?</span>
             <span class="link link-accent" @click="resendCode" style="cursor:pointer; margin-left: 6px;">resend</span>
           </div>
@@ -139,9 +164,6 @@
           </button>
         </form>
 
-        <button type="button" class="btn btn-ink btn-full" @click="skipToApp()" style="margin-top: 10px;">
-          Demo — skip this step
-        </button>
       </div>
     </template>
 
@@ -159,10 +181,10 @@
       loading: false,
       error: "",
       token: "{{ token }}" || localStorage.getItem("token"),
+      isDemo: localStorage.getItem("is_demo") === "1",
+      demoPhone: localStorage.getItem("demo_phone") || "",
+      demoOtp: "",
 
-      skipToApp() {
-        window.location.href = "/app";
-      },
 
       async deleteAccount() {
         if (!confirm("This will permanently delete your account and cancel your invite. Are you sure?")) return;
@@ -204,6 +226,22 @@
 
       async sendCode() {
         if (!this.phone) return;
+
+        // Demo: validate entered number matches the assigned demo phone
+        if (this.isDemo && this.demoPhone) {
+          const entered = this.phone.replace(/\s+/g, "");
+          if (entered !== this.demoPhone) {
+            this.error = "Enter the number shown above.";
+            return;
+          }
+          // Match — generate a demo OTP and go to OTP step
+          this.demoOtp = String(Math.floor(100000 + Math.random() * 900000));
+          this.error = "";
+          this.step = "otp";
+          return;
+        }
+
+        // Real users: send WhatsApp OTP
         this.loading = true;
         this.error = "";
         try {
@@ -231,6 +269,15 @@
         }
       },
 
+      pasteDemoOtp() {
+        const digits = this.demoOtp.split("");
+        this.otp = digits.slice(0, 6);
+        this.$nextTick(() => {
+          const inputs = document.querySelectorAll(".otp-grid input");
+          inputs.forEach((inp, i) => { if (inp) inp.value = this.otp[i] || ""; });
+        });
+      },
+
       async resendCode() {
         this.error = "";
         await this.sendCode();
@@ -239,6 +286,37 @@
       async verifyCode() {
         const code = this.otp.join("");
         if (code.length < 6) return;
+
+        // Demo: validate entered OTP matches the generated demo OTP
+        if (this.isDemo && this.demoOtp) {
+          if (code !== this.demoOtp) {
+            this.error = "Enter the code shown above.";
+            return;
+          }
+          // Match — mark phone verified
+          this.loading = true;
+          this.error = "";
+          try {
+            const r = await fetch("/api/v1/auth/demo-verify-phone", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${this.token}` },
+            });
+            if (!r.ok) {
+              const d = await r.json().catch(() => ({}));
+              throw new Error(d.detail || "Couldn't verify.");
+            }
+            const data = await r.json();
+            if (data.token) { localStorage.setItem("token", data.token); this.token = data.token; }
+            window.location.href = data.redirect || "/app";
+          } catch (err) {
+            this.error = err.message;
+          } finally {
+            this.loading = false;
+          }
+          return;
+        }
+
+        // Real users: verify against backend
         this.loading = true;
         this.error = "";
         try {

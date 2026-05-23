@@ -193,10 +193,11 @@ async def add_new_user_to_general_groups(db: AsyncSession, user_id: UUID) -> Non
     Add a newly registered user to all existing general groups.
     This should be called when a user completes registration.
     """
-    # Get all general groups
+    # Get all general groups — exclude Demo Lounge so real users are never mixed in
     result = await db.execute(
         select(Group)
         .where(Group.is_general == True)
+        .where(Group.name != "Demo Lounge")
         .options(selectinload(Group.members))
     )
     general_groups = result.scalars().all()

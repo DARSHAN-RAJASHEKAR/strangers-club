@@ -18,6 +18,20 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+
+def _is_demo_user(user) -> bool:
+    return user.email.endswith("@demo.strangers.club")
+
+
+def _is_demo_group(group) -> bool:
+    """A group is a demo group if its owner is a demo user, or it's the Demo Lounge."""
+    if group.name == "Demo Lounge":
+        return True
+    if group.owner and group.owner.email.endswith("@demo.strangers.club"):
+        return True
+    return False
+
+
 @router.get("", response_model=List[Group])
 async def read_groups(
     skip: int = 0,
@@ -26,11 +40,14 @@ async def read_groups(
     current_user: User = Depends(get_current_active_user)
 ):
     """
-    Get all groups for the current user.
+    Get all groups for the current user — demo users only see demo groups,
+    real users only see real groups.
     """
     logger.info(f"API: Attempting to fetch groups for user_id: {current_user.id}")
     try:
         groups = await crud_group.get_user_groups(db, current_user.id, skip=skip, limit=limit)
+        user_is_demo = _is_demo_user(current_user)
+        groups = [g for g in groups if _is_demo_group(g) == user_is_demo]
         logger.info(f"API: Successfully fetched {len(groups)} groups for user_id: {current_user.id}")
         return groups
     except Exception as e:

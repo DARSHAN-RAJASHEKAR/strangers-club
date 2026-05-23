@@ -164,9 +164,15 @@ async def verify_invitation_code(db: AsyncSession, code: str) -> Optional[Invita
             return None
         
         # Check if the invitation is expired
-        if invitation.expires_at and invitation.expires_at < datetime.now(timezone.utc):
-            logger.warning(f"Invitation {invitation.id} has expired")
-            return None
+        # SQLite stores datetimes as naive; normalise to UTC before comparing.
+        if invitation.expires_at:
+            expires = invitation.expires_at
+            now = datetime.now(timezone.utc)
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+            if expires < now:
+                logger.warning(f"Invitation {invitation.id} has expired")
+                return None
         
         logger.info(f"Invitation {invitation.id} is valid")
         return invitation

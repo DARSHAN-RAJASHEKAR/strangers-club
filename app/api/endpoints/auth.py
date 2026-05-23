@@ -275,9 +275,18 @@ async def verify_invitation(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid or expired invitation code"
             )
-        
+
+        # Sandbox: demo users can only use demo invite codes; real users cannot use demo codes
+        is_demo_lounge = invitation.group and invitation.group.name == "Demo Lounge"
+        inviter_is_demo = invitation.inviter and invitation.inviter.email.endswith("@demo.strangers.club")
+        current_is_demo = user.email.endswith("@demo.strangers.club")
+        if current_is_demo and not inviter_is_demo and not is_demo_lounge:
+            raise HTTPException(status_code=403, detail="Demo accounts can only use demo invite codes.")
+        if not current_is_demo and (inviter_is_demo or is_demo_lounge):
+            raise HTTPException(status_code=403, detail="This invite code is for demo accounts only.")
+
         logger.info(f"Valid invitation found: {invitation.id}")
-        
+
         # Use the invitation
         try:
             invitation = await use_invitation(db, invitation.id, user.id)
@@ -288,7 +297,7 @@ async def verify_invitation(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to process invitation"
             )
-        
+
         # Add user to the specific group
         try:
             await add_user_to_group(db, invitation.group_id, user.id)
@@ -299,14 +308,15 @@ async def verify_invitation(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to join group"
             )
-        
-        # Add user to ALL general groups
-        try:
-            await add_new_user_to_general_groups(db, user.id)
-            logger.info(f"User {user.id} added to general groups")
-        except Exception as e:
-            logger.error(f"Failed to add user to general groups: {e}")
-            # This is not critical, so we'll log but not fail
+
+        # Add real users to general groups (never demo users; excludes Demo Lounge)
+        if not current_is_demo:
+            try:
+                await add_new_user_to_general_groups(db, user.id)
+                logger.info(f"User {user.id} added to general groups")
+            except Exception as e:
+                logger.error(f"Failed to add user to general groups: {e}")
+                # This is not critical, so we'll log but not fail
         
         # Create a new access token for the fully registered user
         try:
@@ -437,17 +447,101 @@ async def demo_login(
     request: Request,
     db: AsyncSession = Depends(get_db)
 ):
-    """Issue a demo token — no Google auth required."""
-    from app.crud.user import get_user_by_email
-    demo_user = await get_user_by_email(db, "demo@strangers.club")
-    if not demo_user:
-        raise HTTPException(status_code=503, detail="Demo not available right now")
+    """Create a fresh DEMO{N} user and return a token."""
+    from sqlalchemy.future import select as sa_select
+    from app.models.user import User as UserModel
+    from app.models.group import Group
+    from app.models.user import user_group as user_group_table
+    from sqlalchemy import insert
+
+    # Find the next available DEMO number (1–999) — check all DEMO* usernames
+    result = await db.execute(
+        sa_select(UserModel).where(UserModel.username.like("DEMO%"))
+    )
+    existing = result.scalars().all()
+    used_nums = set()
+    for u in existing:
+        try:
+            used_nums.add(int(u.username[4:]))
+        except ValueError:
+            pass
+    next_num = next((n for n in range(1, 1000) if n not in used_nums), 1)
+
+    demo_user = UserModel(
+        email=f"demo{next_num}@demo.strangers.club",
+        username=f"DEMO{next_num}",
+        is_active=True,
+        is_superuser=False,
+        phone_verified=False,
+    )
+    db.add(demo_user)
+    await db.commit()
+    await db.refresh(demo_user)
+
+    # Generate a real invite code for the Demo Lounge — always use "DEMO1" as prefix
+    # so the code is always "DEMO1-XXX" = 8 chars in the grid (DEMO1XXX without dash)
+    invite_code = None
+    lounge = (await db.execute(
+        sa_select(Group).where(Group.name == "Demo Lounge")
+    )).scalars().first()
+    if lounge:
+        import random, string
+        from app.models.invitation import Invitation as InvitationModel
+        from datetime import timezone as tz
+        # Keep generating until we get a unique code
+        from app.crud.invitation import get_invitation_by_code
+        for _ in range(10):
+            letter = random.choice(string.ascii_uppercase)
+            digits = f"{random.randint(10, 99)}"
+            code = f"DEMO1-{letter}{digits}"
+            if not await get_invitation_by_code(db, code):
+                break
+        inv = InvitationModel(
+            code=code,
+            inviter_id=demo_user.id,
+            group_id=lounge.id,
+            is_used=False,
+            expires_at=datetime.now(tz.utc) + timedelta(days=7),
+        )
+        db.add(inv)
+        await db.commit()
+        invite_code = code  # always "DEMO1-XXX"
+
+    # Generate a unique demo phone: 00000 + 5 random digits (never a real number)
+    demo_phone = "00000" + f"{random.randint(10000, 99999)}"
+
     token = create_access_token(
         data={"sub": demo_user.email},
         expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     request.session["token"] = token
-    return {"token": token}
+    return {"token": token, "invite_code": invite_code, "demo_phone": demo_phone}
+
+
+@router.post("/demo-verify-phone")
+async def demo_verify_phone(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Skip phone verification for demo users — marks phone_verified without sending OTP."""
+    if not current_user.email.endswith("@demo.strangers.club"):
+        raise HTTPException(status_code=403, detail="Demo accounts only")
+
+    from sqlalchemy.future import select as sa_select
+    from app.models.user import User as UserModel
+
+    result = await db.execute(sa_select(UserModel).where(UserModel.id == current_user.id))
+    user = result.scalars().first()
+    user.phone_verified = True
+    await db.commit()
+
+    token = create_access_token(
+        data={"sub": current_user.email},
+        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    request.session["token"] = token
+    return {"token": token, "redirect": "/app"}
 
 
 @router.post("/send-otp")

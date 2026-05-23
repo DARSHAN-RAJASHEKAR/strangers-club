@@ -107,22 +107,111 @@ async def init_db():
             await session.commit()
             await session.refresh(admin)
 
-        # --- DEMO USER ---
+        # --- DEMO LOUNGE (shared group for all demo users) ---
         result = await session.execute(
-            select(User).where(User.email == "demo@strangers.club")
+            select(Group).where(Group.name == "Demo Lounge")
         )
-        demo = result.scalars().first()
-        if not demo:
-            demo = User(
-                email="demo@strangers.club",
-                username="DEMO1",
-                is_active=True,
-                is_superuser=False,
-                phone_verified=True,
+        lounge = result.scalars().first()
+        if not lounge:
+            result = await session.execute(
+                select(User).where(User.email == settings.ADMIN_EMAIL)
             )
-            session.add(demo)
-            await session.commit()
-            print("Demo user created: demo@strangers.club")
+            admin_user = result.scalars().first()
+            if admin_user:
+                lounge = Group(
+                    name="Demo Lounge",
+                    description="Shared space for demo users to chat",
+                    is_general=True,
+                    owner_id=admin_user.id,
+                )
+                session.add(lounge)
+                await session.commit()
+                await session.refresh(lounge)
+                session.add(Channel(
+                    name="general",
+                    description="Demo chat",
+                    type=ChannelType.GENERAL,
+                    group_id=lounge.id,
+                ))
+                await session.commit()
+                print("Demo Lounge created")
+
+    asyncio.create_task(_demo_cleanup_loop())
+
+
+async def _delete_demo_groups(session: AsyncSession, demo_user_id, cutoff=None):
+    """Delete demo groups and all related rows using raw SQL to avoid ORM cascade issues."""
+    from sqlalchemy import text
+
+    q = "SELECT id FROM groups WHERE owner_id = :uid"
+    params = {"uid": str(demo_user_id)}
+    if cutoff:
+        q += " AND created_at < :cutoff"
+        params["cutoff"] = cutoff.isoformat()
+
+    result = await session.execute(text(q), params)
+    group_ids = [str(row[0]) for row in result.fetchall()]
+    if not group_ids:
+        return
+
+    # Parameterized IN clause — SQLite requires individual named params, not tuple binding
+    params = {f"gid_{i}": gid for i, gid in enumerate(group_ids)}
+    id_list = ", ".join(f":gid_{i}" for i in range(len(group_ids)))
+
+    await session.execute(text(f"DELETE FROM messages WHERE channel_id IN (SELECT id FROM channels WHERE group_id IN ({id_list}))"), params)
+    await session.execute(text(f"DELETE FROM channels WHERE group_id IN ({id_list})"), params)
+    await session.execute(text(f"DELETE FROM invitations WHERE group_id IN ({id_list})"), params)
+    await session.execute(text(f"DELETE FROM user_group WHERE group_id IN ({id_list})"), params)
+    await session.execute(text(f"DELETE FROM groups WHERE id IN ({id_list})"), params)
+    await session.commit()
+
+
+async def _demo_cleanup_loop():
+    """Every 5 min: delete demo groups >30 min old. Every 48h: delete all demo users."""
+    from datetime import timezone
+    from sqlalchemy import text
+    last_user_cleanup = datetime.datetime.now(timezone.utc)
+
+    while True:
+        await asyncio.sleep(5 * 60)
+        try:
+            async with AsyncSession(engine) as session:
+                now = datetime.datetime.now(timezone.utc)
+
+                # Delete demo groups older than 30 min (skip Demo Lounge)
+                cutoff_groups = now - datetime.timedelta(minutes=30)
+                result = await session.execute(
+                    select(User).where(User.email.like("demo%@demo.strangers.club"))
+                )
+                demo_users = result.scalars().all()
+                for du in demo_users:
+                    await _delete_demo_groups(session, du.id, cutoff=cutoff_groups)
+
+                # Every 48h: delete all demo users and their remaining data
+                if (now - last_user_cleanup).total_seconds() >= 48 * 3600:
+                    result = await session.execute(
+                        select(User).where(User.email.like("demo%@demo.strangers.club"))
+                    )
+                    demo_users = result.scalars().all()
+                    for du in demo_users:
+                        await _delete_demo_groups(session, du.id)
+                        # Delete invitations where this demo user is the inviter (FK constraint)
+                        await session.execute(
+                            text("DELETE FROM invitations WHERE inviter_id = :uid"),
+                            {"uid": str(du.id)}
+                        )
+                        await session.execute(
+                            text("DELETE FROM user_group WHERE user_id = :uid"),
+                            {"uid": str(du.id)}
+                        )
+                        await session.delete(du)
+                    await session.commit()
+                    last_user_cleanup = now
+                    print("Demo users purged (48h cycle)")
+
+        except Exception as e:
+            print(f"Demo cleanup error: {e}")
+
 
 # Root route
 @app.get("/", response_class=HTMLResponse)
@@ -202,6 +291,11 @@ async def verify_phone_page(request: Request):
         return RedirectResponse(url="/verify-phone")
     
     return templates.TemplateResponse("verify-phone.html", {"request": request, "token": token})
+
+# House rules page
+@app.get("/house-rules", response_class=HTMLResponse)
+async def house_rules_page(request: Request):
+    return templates.TemplateResponse("house-rules.html", {"request": request})
 
 # Health check endpoint
 @app.get("/health")

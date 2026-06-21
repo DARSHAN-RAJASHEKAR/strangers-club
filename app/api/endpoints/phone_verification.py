@@ -53,8 +53,7 @@ async def request_verification(
             db, current_user.id, phone_number, expires_in_minutes
         )
         
-        # Log the verification code creation
-        logger.info(f"Generated verification code {verification.verification_code} for user {current_user.id}")
+        logger.info(f"Generated verification code for user {current_user.id}")
         
         # Send OTP via WhatsApp - directly call the service (don't use background tasks)
         success = await whatsapp_service.send_otp(
@@ -102,8 +101,7 @@ async def verify_code(
         phone_number = verification_request.phone_number.strip()
         verification_code = verification_request.verification_code.strip()
         
-        # Log verification attempt
-        logger.info(f"Verification attempt for user {current_user.id} with code {verification_code}")
+        logger.info(f"Verification attempt for user {current_user.id}")
         
         # Verify the code
         verification_successful = await crud_phone.verify_code(
